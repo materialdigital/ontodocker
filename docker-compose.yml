@@ -1,0 +1,51 @@
+version: '3.7'
+
+services:
+  fastapi:
+    container_name: fastapi
+    build: ./fastapi_app
+    command: /start-reload.sh # auto-reload when the file changes, very useful in development
+    volumes:
+      - ./fastapi_app/app:/app
+      - ./data:/data
+    depends_on:
+      - fuseki
+    networks:
+      - default
+    ports:
+      - "80:80"
+#    restart: on-failure
+
+  fuseki:
+    image: secoresearch/fuseki:4.9.0
+    container_name: fuseki
+    volumes:
+      - ./data/fuseki/shiro.ini:/jena-fuseki/shiro.ini
+      - ./data/fuseki/databases:/fuseki-base/databases
+      - ./data/fuseki/configuration:/fuseki-base/configuration
+    user: root  # Run the container with root user
+    environment:
+      - JAVA_OPTIONS=-Xmx4096m -Xms4096m # TODO change this according to the memory of your PC/server
+      - ADMIN_PASSWORD=changeme # TODO
+      - ENABLE_DATA_WRITE=true
+      - ENABLE_UPDATE=true
+      - ENABLE_UPLOAD=true
+      - QUERY_TIMEOUT=60000 # in milliseconds (60 seconds by default)
+    networks:
+      - default
+    ports:
+      - "3030:3030"
+#    restart: on-failure
+
+# the ontodocker was built for fuseki and not yet adapted to graphdb (I put it here for performance comparison)
+#  graphdb:
+#    image: ontotext/graphdb:10.3.3
+#    container_name: graphdb
+#    environment:
+#      - GDB_JAVA_OPTS=-Xmx4g -Xms4g # change this according to the memory of your PC/server
+#    networks:
+#      - default
+#    ports:
+#      - "7200:7200"
+#    restart: always
+

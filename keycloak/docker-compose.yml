@@ -1,0 +1,40 @@
+version: '3.7'
+
+services:
+  keycloak-db:
+      container_name: keycloak-db
+      image: postgres:15
+      volumes:
+        - keycloak22_postgres15_demo:/var/lib/postgresql/data
+      environment:
+        POSTGRES_DB: keycloak
+        POSTGRES_USER: keycloak
+        POSTGRES_PASSWORD: changeme
+      networks:
+        - internal
+      ports:
+        - 5432:5432
+
+  keycloak:
+      container_name: keycloak
+      build: .
+      volumes:
+        - ./backup/json/export:/opt/keycloak/data # export dir # see: https://www.keycloak.org/server/importExport
+      depends_on:
+        - keycloak-db
+      networks:
+        - internal
+      command:
+        - start-dev
+#        - export --dir /opt/keycloak/data
+#        - import --dir /opt/keycloak/data
+      ports:
+        - 8080:8080
+
+volumes:
+  keycloak22_postgres15_demo:
+      driver: local
+
+networks:
+  internal:
+    driver: bridge

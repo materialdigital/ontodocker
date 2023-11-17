@@ -1,0 +1,33 @@
+{
+  "Mechanical, Physical - Density": {
+    "DensityAt20C": {
+      "display_name": "Density at 20°C",
+      "unit": "g/cm³"
+    }
+  },
+  "Mechanical, Physical - Elasticity": {
+    "ShearModulus": {
+      "display_name": "Shear Modulus",
+      "unit": "GPa"
+    },
+    "YoungModulus": {
+      "display_name": "Young's Modulus",
+      "unit": "GPa"
+    },
+    "PoissonRatio": {
+      "display_name": "Poisson's ratio",
+      "unit": "-"
+    }
+  },
+  "Optical - Refraction - Dispersion": {
+    "RefractiveIndexAt20C": {
+      "display_name": "Refractive index(n) at 20°C",
+      "unit": "-"
+    },
+    "AbbeNumber": {
+      "display_name": "Abbe number",
+      "unit": "-"
+    }
+  }
+
+}

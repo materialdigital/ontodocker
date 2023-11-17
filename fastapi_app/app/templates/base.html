@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>
+    <title>Fast Ontodocker Web GUI</title>
+    <link href="../static/favicon.ico" rel="icon"/>
+
+    <!-- Bootstrap Style-->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+
+    <!-- Bundle Datatables styles-->
+    <link href="https://cdn.datatables.net/v/bs5/jszip-3.10.1/dt-1.13.6/b-2.4.1/b-html5-2.4.1/fc-4.3.0/fh-3.4.0/r-2.5.0/sc-2.2.0/sb-1.5.0/sp-2.2.0/sl-1.7.0/datatables.min.css"
+          rel="stylesheet">
+
+    <!-- Font Awesome Style-->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" integrity="sha512-W/zrbCncQnky/EzL+/AYwTtosvrM+YG/V6piQLSe2HuKS6cmbw89kjYkp3tWFn1dkWV7L1ruvJyKbLz73Vlgfg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/regular.min.css" integrity="sha512-rOTVxSYNb4+/vo9pLIcNAv9yQVpC8DNcFDWPoc+gTv9SLu5H8W0Dn7QA4ffLHKA0wysdo6C5iqc+2LEO1miAow==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" integrity="sha512-P9pgMgcSNlLb4Z2WAB2sH5KBKGnBfyJnq+bhcfLCFusrRc4XdXrhfDluBl/usq75NF5gTDIMcwI1GaG5gju+Mw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" integrity="sha512-siarrzI1u3pCqFG2LEzi87McrBmq6Tp7juVsdmGY1Dr8Saw+ZBAzDzrGwX3vgxX1NkioYNCFOVC0GpDPss10zQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <!--Flaticon icon-->
+    <link href="../static/css/flaticon/uicons-bold-rounded.min.css?v=1" rel="stylesheet"/>
+    <link href="../static/css/flaticon/uicons-thin-rounded.min.css?v=1" rel="stylesheet"/>
+    <link href="../static/css/flaticon/uicons-regular-rounded.min.css?v=1" rel="stylesheet"/>
+    <link href="../static/css/flaticon/uicons-solid-rounded.min.css?v=1" rel="stylesheet"/>
+
+
+    <link href="../static/css/styles.min.css?v=1" rel="stylesheet"/>
+    <link href="../static/css/custom.min.css?v=1" rel="stylesheet"/>
+
+    <!-- Bootstrap Bundle (popper.js included)-->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
+            crossorigin="anonymous"></script>
+
+    <!-- JQuery-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+            integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <!-- DataTables Bundle (partial)-->
+    <script src="https://cdn.datatables.net/v/bs5/jszip-3.10.1/dt-1.13.6/b-2.4.1/b-html5-2.4.1/fc-4.3.0/fh-3.4.0/r-2.5.0/sc-2.2.0/sb-1.5.0/sp-2.2.0/sl-1.7.0/datatables.min.js"></script>
+
+    <!--Axios HTTP Requests-->
+    <script src="https://unpkg.com/axios@1.1.2/dist/axios.min.js"></script>
+    <script src="../static/js/axios_tasks.min.js?v="></script>
+
+    <!-- Plotly.js all modules-->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly.min.js" integrity="sha512-R4Vz0/42Zw4rKUc8nc8TuKQGMtOMzCHxtXIFQoCB/fOT3q+L8f5l2s8n3CZsbJveMhoAV9yP8yWdj8vzwQx0hA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>-->
+    <!-- Plotly.js partial modules-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly-cartesian.min.js"
+            integrity="sha512-Lu31IpZw1aFOorzl62Og5tt1C6FzIF3Daf73jgVWs7NAfTkE4NpKLKQB5RHz0e2PUvMxoMFdV900rcmZdzc19w=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <script src="../static/js/utils.min.js?v="></script>
+
+
+    {% block style %}
+    {% endblock %}
+
+</head>
+<body class="sb-nav-fixed">
+
+<nav class="sb-topnav navbar navbar-expand fh-fixedHeader">
+    <a class="navbar-brand text-center fw-semibold" href="/">Fast Ontodocker</a>
+
+    <!-- Sidebar Toggle-->
+    <button type="button" class="btn border-0 me-4 me-sm-0" id="sidebarToggle"
+            data-bs-toggle="tooltip" data-bs-custom-class="custom-tooltip" data-bs-placement="bottom"
+            title="Toggle sidebar">
+        <span class="material-symbols-outlined align-middle" style="color: #4F525C;">dock_to_right</span>
+    </button>
+
+    <!-- Navbar-->
+    <ul class="navbar-nav ms-auto me-1 align-items-center">
+        <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle d-md-none" id="navbarDropdown" href="#" role="button" data-bs-toggle="dropdown"
+               aria-expanded="false"><i class="fa-solid fa-user"></i>
+            </a>
+            <a class="nav-link dropdown-toggle d-none d-md-block" id="navbarDropdown2" href="#" role="button" data-bs-toggle="dropdown"
+               aria-expanded="false"><i class="fa-solid fa-user"></i><span class="m-1 fw-semibold">{{ name }} ({{ email }})</span>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                <button class="dropdown-item" id="api_key_button" type="button"
+                        onclick="$('#apiKeyModal').modal('toggle')"><i class="fa-solid fa-key fa-fw"></i>
+                    API Key
+                </button>
+                <li>
+                    <hr class="dropdown-divider"/>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="/logout"><i class="fa-solid fa-arrow-right-from-bracket fa-fw"></i>
+                        Sign out
+                    </a>
+                </li>
+            </ul>
+        </li>
+    </ul>
+</nav>
+    <div id="layoutSidenav">
+    <div id="layoutSidenav_nav">
+        <nav class="sb-sidenav accordion sb-sidenav-light" id="sidenavAccordion">
+            <div class="sb-sidenav-menu">
+                <script>
+                    (function () {
+                        let menuTimeout = null;
+                        if (Boolean(localStorage.getItem('sidebar-toggle-collapsed'))) {
+                            const body = document.getElementsByTagName('body')[0];
+                            body.className = body.className + ' sb-sidenav-toggled';
+                        }
+
+                        window.addEventListener("mousemove", (e) => {
+                            // Check if the sidebar should be collapsed based on localStorage
+                            const isSidebarCollapsed = Boolean(localStorage.getItem('sidebar-toggle-collapsed'));
+
+                            if (isSidebarCollapsed) {
+                                mouseMoveHandler(e);
+                            }
+                        });
+
+                        function mouseMoveHandler(e) {
+                            const menu = document.querySelector('.sb-sidenav-menu');
+                            if (e.pageX < 5 || menu.matches(':hover')) {
+                                // Show the menu if mouse is within 5 pixels
+                                // from the left or we are hovering over it
+                                clearTimeout(menuTimeout);
+                                menuTimeout = null;
+                                document.body.classList.remove('sb-sidenav-toggled');
+                            } else if (menuTimeout === null) {
+                                menuTimeout = setTimeout(function () {
+                                    document.body.classList.add('sb-sidenav-toggled');
+                                }, 100);
+                            }
+                        }
+
+                    })();
+                </script>
+                <div class="nav">
+                    <a class="nav-link {{'active' if request.path == '/'}}" href="/">
+                        <div class="sb-nav-link-icon"><i class="fa-solid fa-house fa-fw"></i></div>
+                        Home
+                    </a>
+
+                    {% if "admin" in role or "App-admin" in role %}
+                    <hr class="sb-sidenav-menu-line">
+
+                    <div class="sb-sidenav-menu-heading">Triplestore Server<span class="ms-2"><i
+                            class="fa-solid fa-arrow-up-right-from-square"></i></span></div>
+                    <a class="nav-link" href="http://localhost" onclick="event.target.port=3030"
+                       target="_blank">
+                        <div class="sb-nav-link-icon"><i class="fa-solid fa-rocket fa-fw"></i></div>
+                        Apache Jena Fuseki
+                    </a>
+                    {% endif %}
+
+                    <hr class="sb-sidenav-menu-line">
+
+                    <div class="sb-sidenav-menu-heading">Database</div>
+                    <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLayouts"
+                       aria-expanded="false" aria-controls="collapseLayouts">
+                        <div class="sb-nav-link-icon"><i class="fa-solid fa-database fa-fw"></i></div>
+                        Datasets
+                        <div class="sb-sidenav-collapse-arrow"><i class="fa-solid fa-angle-down"></i></div>
+                    </a>
+                    <div class="collapse show" id="collapseLayouts" aria-labelledby="headingOne">
+                        <nav class="sb-sidenav-menu-nested nav">
+                            {% if tdb_ids_jena is none %}
+                            <div class="alert alert-danger me-4" role="alert">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <span class="m-1">Error<br>Triplestore unavailable</span>
+                            </div>
+                            {% else %}
+                            {% for _id in tdb_ids_jena %}
+                            <a class="nav-link {{'active' if _id == tdb_id }}" href="/jena/{{ _id }}">
+                            <span class="ms-1">{{ _id }}</span>
+                            </a>
+                            {% endfor %}
+                            {% endif %}
+                            {% if not tdb_ids_jena and tdb_ids_jena is not none %}
+                            <span class="m-4">No datasets</span>
+                            {% endif %}
+                            {% if "admin" in role or "App-admin" in role %}
+                            <form action="/create_dataset" method="POST" id="create_dataset">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" placeholder="dataset name" name="create_tdb_id"
+                                           required>
+                                        <button class="btn btn-primary" id="btnNavbarAdd" name="create"
+                                                value="jena"
+                                                type="submit"><i class="fa-solid fa-plus"></i></button>
+                                </div>
+                            </form>
+                            {% endif %}
+                        </nav>
+                    </div>
+
+                     <hr class="sb-sidenav-menu-line">
+
+                    <div class="sb-sidenav-menu-heading">Features</div>
+                    <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLayouts2"
+                       aria-expanded="false" aria-controls="collapseLayouts2">
+                        <div class="sb-nav-link-icon"><i class="fa-solid fa-retweet fa-fw"></i></div>
+                        Pipelines
+                        <div class="sb-sidenav-collapse-arrow"><i class="fa-solid fa-angle-down"></i></div>
+                    </a>
+                    <div class="collapse show" id="collapseLayouts2" aria-labelledby="headingTwo">
+                        <nav class="sb-sidenav-menu-nested nav">
+                            <a class="nav-link" href="#pipeline" onclick="future(event)">
+                                <span class="ms-1 ">Data pipelines
+                                    <span class="badge rounded-pill bg-danger ms-2">Future</span>
+                                </span>
+                            </a>
+                        </nav>
+                    </div>
+
+                    <hr class="sb-sidenav-menu-line">
+
+                    <div class="sb-sidenav-menu-heading">Ontology<span class="ms-2"><i
+                            class="fa-solid fa-arrow-up-right-from-square"></i></span></div>
+                    <a class="nav-link" target="_blank" href="https://materialdigital.github.io/glasdigital-ontology">
+                        <div class="sb-nav-link-icon"><i class="fa-solid fa-book fa-fw"></i></div>
+                        Documentation
+                    </a>
+                    <a class="nav-link" target="_blank"
+                       href="https://materialdigital.github.io/glasdigital-ontology/webvowl/index.html#">
+                        <div class="sb-nav-link-icon"><i class="fa-solid fa-sitemap fa-fw"></i></div>
+                        Visualization
+                    </a>
+                    <a class="nav-link" target="_blank" href="https://github.com/materialdigital/glasdigital-ontology">
+                         <div class="sb-nav-link-icon"><i class="fa-brands fa-github fa-fw"></i></div>
+                        GitHub Page
+                    </a>
+                </div>
+            </div>
+
+            <div class="sb-sidenav-footer pe-4">
+                <i class="fi fi-rr-crown align-middle"></i>
+                {% if role is not none %}
+                {% if "admin" in role or "App-admin" in role %}
+                Admin role
+                {% elif "App-insider" in role %}
+                Insider role
+                {% else %}
+                Guest role
+                {% endif %}
+                {% else %}
+                Role not assigned
+                {% endif %}
+            </div>
+        </nav>
+    </div>
+    <div id="layoutSidenav_content">
+        <main>
+
+            <div class="toast-container position-fixed top-0 end-0 px-4 py-4">
+                <div id="successToast" class="toast toast-success" data-bs-delay="2000" role="alert"
+                     aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            Success message
+                        </div>
+                        <button type="button" class="btn-close btn-close me-2 m-auto" data-bs-dismiss="toast"
+                                aria-label="Close"></button>
+                    </div>
+                </div>
+                <div id="warningToast" class="toast toast-warning" data-bs-delay="2000" role="alert"
+                     aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body toast-warning">
+                            Warning message
+                        </div>
+                        <button type="button" class="btn-close btn-close me-2 m-auto" data-bs-dismiss="toast"
+                                aria-label="Close"></button>
+                    </div>
+                </div>
+                <div id="dangerToast" class="toast toast-danger" data-bs-delay="2000" role="alert"
+                     aria-live="assertive"
+                     aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body toast-danger">
+                            Danger message
+                        </div>
+                        <button type="button" class="btn-close btn-close me-2 m-auto" data-bs-dismiss="toast"
+                                aria-label="Close"></button>
+                    </div>
+                </div>
+                <div id="loadingToast" class="toast" role="alert"
+                     aria-live="assertive"
+                     aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body text-secondary">
+                            loading message
+                        </div>
+                        <button type="button" class="btn-close btn-close me-2 m-auto" data-bs-dismiss="toast"
+                                aria-label="Close"></button>
+                    </div>
+                </div>
+            </div>
+
+            {% block content %}
+            {% endblock %}
+
+            <!-- Modal -->
+            <div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
+                 aria-hidden="true">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="exampleModalLabel">Modal title</h5>
+                        </div>
+                        <div class="modal-body">
+                            Modal message
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-danger" id="confirmRemoveButton" hidden>Remove
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" data-dismiss="modal"
+                                    onclick="$('#exampleModal').modal('toggle')">Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Key Modal -->
+            <div class="modal fade" id="apiKeyModal" tabindex="-1" role="dialog" aria-labelledby="apiKeyModalLabel"
+                 aria-hidden="true">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="apiKeyModalLabel">API Key</h5>
+                        </div>
+                        <div class="modal-body">
+                        <div class="input-group mb-3">
+                            <input type="password" class="form-control form-control-lg" readonly
+                                   value="{{ api_key }}"
+                                   id="api_key">
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                                data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="right" title=""
+                                onclick="CopyToClipboard('api_key')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-dismiss="modal"
+                                    onclick="$('#apiKeyModal').modal('toggle')">Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Back to top button -->
+            <button type="button" class="btn btn-secondary btn-floating btn-lg" id="btn-back-to-top">
+                <i class="fa-solid fa-arrow-up"></i>
+            </button>
+        </main>
+        <footer class="py-4 bd-footer mt-auto">
+            <div class="container-fluid px-4">
+                <div class="d-flex justify-content-center">
+                    <div class="text-muted">Copyright &copy; <a target="_blank"
+                                                                href="https://www.cmsg.uni-jena.de/">
+                        Computational Materials Science Group</a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+</div>
+
+
+<!--Prevent browser auto scroll on refresh (F5)-->
+<script> history.scrollRestoration = "manual"</script>
+
+
+{% block script %}
+{% endblock %}
+
+
+</body>
+</html>

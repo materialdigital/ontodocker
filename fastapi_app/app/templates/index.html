@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+
+{% block style %}
+<!-- yasgui Style note: yasgui styles will affect the Style of DataTables styles, vice versa! So I modify it and serve locally-->
+<!--    <link href="https://unpkg.com/@triply/yasgui/build/yasgui.min.css" rel="stylesheet" type="text/css" />-->
+<link href="../static/css/yasgui/yasgui.min.css" rel="stylesheet"/>
+
+<style>
+
+    .fi-br-triangle:before {
+        content: "\f961";
+        top: 2px !important;
+        position: relative !important;
+    }
+    
+    .treejs {
+        font-size: 20px !important;
+    }
+
+    .treejs .treejs-node__checked > .treejs-checkbox:before, .treejs .treejs-node__halfchecked > .treejs-checkbox:before {
+        background-color: #509ee3 !important;
+        border-color: #509ee3 !important;
+    }
+
+
+</style>
+
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+
+    {% if not tdb_id %}
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+        <script>
+            showToastMessage('{{ message.category }}',  '{{ message.message|safe }}') // use |safe in case of newline \n in string
+        </script>
+    {% endfor %}
+
+
+    <!-- Announcement-->
+    <div class="card mt-4 mb-4">
+        <div class="card-header">
+<i class="fa-solid fa-lightbulb"></i>
+            <span class="m-1">Welcome</span>
+        </div>
+        <div class="card-body">
+            <p>
+                <a target="_blank" href="https://git.material-digital.de/ya-fanchen/fast-ontodocker">Fast Ontodocker</a>
+                is a rebuilt version of
+                <a target="_blank" href="https://git.material-digital.de/apps/ontodocker">Ontodocker</a>
+                built with
+                <a target="_blank" href="https://fastapi.tiangolo.com/">FastAPI</a>, a modern and powerful
+                web framework.
+            </p>
+            <p>
+                For more information about GlasDigital, please visit the
+                <a target="_blank" href="https://www.materialdigital.de/project/4">Platform
+                    MaterialDigital</a>
+                .
+            </p>
+            <p>
+
+            </p>
+        </div>
+    </div>
+
+
+    <!-- API Docs-->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-book" aria-hidden="true"></i>
+            <span class="m-1">APIs Documents</span>
+        </div>
+        <div class="card-body">
+            <p>
+                <a target="_blank" href="/docs">Here</a>
+                you can find an interactive documentation where you can try out some of the APIs directly on
+                the documentation page.
+            </p>
+            <p>
+                Or you can read the documentation on
+                <a target="_blank" href="/redoc">Here</a>
+                in a nice layout. But it does not provide interactive REST methods on the page, it's just
+                there for reading.
+            </p>
+        </div>
+    </div>
+
+    <!-- Release Notes-->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-tag" aria-hidden="true"></i>
+            <span class="m-1">Release Notes</span>
+        </div>
+        <div class="card-body">
+            <h5>
+                0.2.3
+            </h5>
+            <ul>
+                <li>UI/UX improvements and some bug fixes</li>
+            </ul>
+
+        </div>
+    </div>
+
+    <!-- Contact Information-->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-circle-info"></i>
+            <span class="m-1">Contact Information</span>
+        </div>
+        <div class="card-body">
+            <div class="contact_facility_name">
+<!--                <strong>Computational Materials Science Group</strong>-->
+                Computational Materials Science Group
+            </div>
+            <div class="contact_facility_box_wrapper">
+                <div class="contact_facility_box">
+                    <div class="contact_facility_box_content">
+                        <div class="contact_facility_place">
+                            <div class="contact_facility_building">
+                                Otto Schott Institute of Materials Research
+                            </div>
+                            <div class="contact_facility_street">
+                                Löbdergraben 32
+                            </div>
+                            <div class="contact_facility_city">
+                                07743 Jena
+                            </div>
+                        </div>
+                        <br>
+                        <div class="contact_facility_map">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            <a class="link_extern"
+                               href="https://www.google.com/maps/place/Otto-Schott-Institute+for+Materials+Research/@50.9268219,11.587216,15z/data=!4m6!3m5!1s0x47a6a8bb649dfb5b:0xd1184b4724d22d7f!8m2!3d50.9268219!4d11.587216!16s%2Fg%2F1ptxvlrgx"
+                               target="_blank"
+                               aria-label="Show &quot;Otto Schott Institute of Materials Research&quot; on Google Maps">
+                                Google Maps site plan
+                            </a>
+                        </div>
+                        <div class="contact_facility_telfax">
+                            <i class="fa-solid fa-user" aria-hidden="true"></i>
+                            <a>
+                                Ya-Fan Chen
+                            </a>
+                        </div>
+                        <div class="contact_facility_mail">
+                            <i class="fa-solid fa-envelope" aria-hidden="true"></i>
+
+                            <a class="link_mail" href="mailto:ya-fan.chen@uni-jena.de"
+                               aria-label="Send email to &quot;Computational Materials Science Group&quot;">
+                                ya-fan.chen@uni-jena.de
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div>
+        <div class="row align-items-center">
+            <div class="col">
+                <h4 class="mt-3 mb-3">
+                    <span id="tdb_id">{{ tdb_id }}</span>
+                </h4>
+            </div>
+            {% if "admin" in role or "App-admin" in role %}
+                <div class="col-auto">
+                    <form action="/jena/{{ tdb_id }}/clear_cache"
+                          method="GET" id="clear_dataset_cache" style="display: inline-block;">
+                        <input type="hidden" name="tdb_id" value='{{ tdb_id }}'>
+                        <button type="submit" name="destroy" class="btn btn-outline-secondary">
+                            Clear cache
+                        </button>
+                    </form>
+                </div>
+                <div class="col-auto">
+                    <!--                    <form class=btn-group method="POST">-->
+                    <form action="/destroy_dataset" method="POST" id="destroy_dataset" style="display: inline-block;">
+                        <input type="hidden" name="tdb_id" value='{{ tdb_id }}'>
+                        <button type="submit" name="destroy" class="btn btn-danger"
+                                onclick="return confirm('Are you sure you want to remove this dataset?\n\nThis action cannot be reversed.')">
+                            Remove this dataset
+                        </button>
+                    </form>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+        <script>
+            showToastMessage('{{ message.category }}',  '{{ message.message|safe }}') // use |safe in case of newline \n in string
+        </script>
+    {% endfor %}
+</div>
+
+
+{% if tdb_id %}
+<!-- Query Field -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header pt-2">
+            <div class="row g-3 justify-content-between align-items-center">
+                <div class="col-6 col-md">
+                    <ul class="nav nav-tabs card-header-tabs" data-bs-tabs="tabs">
+                        <li class="nav-item">
+                            <a class="nav-link active" aria-current="true" data-bs-toggle="tab"
+                               href="#query_gui_view">
+                                <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+                                <span class="ms-1">Query UI</span>
+                            </a>
+                        </li>
+                        <!--Yasgui Code Editor Tab-->
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#sparql_code_view">
+                                <i class="fa-solid fa-code" aria-hidden="true"></i>
+                                <span class="ms-1">Code Editor</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="col col-md-auto">
+                    <button type="button" class="btn btn-primary-outline copy-button py-0"
+                            id="copy_code" style="display: none;" data-bs-custom-class="custom-tooltip"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="left"
+                            onclick="navigator.clipboard.writeText(yasgui.getTab().yasqe.getValue());"><!--color: #6c757d;-->
+                        <!--HTTPS only-->
+                        <i class="fa-regular fa-copy fa-fw"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- content -->
+        <div class="card-body tab-content">
+            <!-- 1st Tab (Query GUI View) -->
+            {% if tdb_id == "SciGlass" %}
+            <div class="tab-pane show active" id="query_gui_view">
+                <div class="row">
+                    <div class="col">
+                        <h5>Glass systems</h5>
+
+                        <div class="col mb-4 col-auto">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio"
+                                       name="OxideRadioOptions" id="glass_system_NABS"
+                                       value="glass_system_NABS" autocomplete="off">
+                                <label class="form-check-label"
+                                       for="glass_system_NABS"
+                                       data-bs-custom-class="custom-tooltip"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top" title="Na2O+Al2O3+B2O3+SiO2">NABS</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio"
+                                       name="OxideRadioOptions" id="glass_system_NBS"
+                                       value="glass_system_NBS" autocomplete="off">
+                                <label class="form-check-label"
+                                       for="glass_system_NBS"
+                                       data-bs-custom-class="custom-tooltip"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top" title="Na2O+B2O3+SiO2">NBS</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio"
+                                       name="OxideRadioOptions" id="glass_system_NCS"
+                                       value="glass_system_NCS" autocomplete="off">
+                                <label class="form-check-label"
+                                       for="glass_system_NCS"
+                                       data-bs-custom-class="custom-tooltip"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top" title="Na2O+CaO+SiO2">NCS</label>
+                            </div>
+
+                        </div>
+
+                    </div>
+                    <div class="col">
+                        <h5>Properties</h5>
+                        <div class="container-fluid scroll" id="propertyTreeView">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" value="" name="ref_checkbox"
+                           id="ref_checkbox" checked>
+                    <label class="form-check-label" for="ref_checkbox">
+                        Query with reference
+                    </label>
+                </div>
+
+            </div>
+            {% else %}
+            <div class="tab-pane show active" id="query_gui_view">
+                <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-warning-rgb));"></i>
+                <span class="m-1">Query UI does not support this dataset</span>
+
+                <p>
+                    Please use the dataset <strong>SciGlass</strong> for demonstration.
+                </p>
+
+
+            </div>
+            {% endif %}
+
+
+            <!-- 2nd Tab (SPARQL Code View2)-->
+            <div class="tab-pane show mb-4" id="sparql_code_view">
+                <div class="row">
+                    <form method="POST" id="qform"
+                          enctype="application/x-www-form-urlencoded">
+                        <div id="yasgui"></div>
+                    </form>
+                </div>
+                <div class="col float-end" style="color: #4f525c;">
+                    <a class="" target="_blank" href="https://www.w3.org/TR/sparql11-overview/">
+                        <span>W3C SPARQL Overview</span>
+                    </a>
+                    <span class="ms-1"><i
+                            class="fa-solid fa-arrow-up-right-from-square"></i></span>
+                </div>
+            </div>
+
+            <div class="text-center">
+                    <button type="submit" form="qform" name="query" value="query"
+                            class="btn btn-primary" data-bs-custom-class="custom-tooltip"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="bottom" title="Run the query/code">
+                        <i class="fa-solid fa-play"></i>
+                        <span class="ms-1">Run</span>
+                    </button>
+                {% if "admin" in role or "App-admin" in role %}
+                    <button type="submit" form="qform" name="update" id="updateButton"
+                            class="btn btn-outline-secondary" data-bs-custom-class="custom-tooltip"
+                            data-bs-toggle="tooltip"
+                            data-bs-placement="bottom" title="Update partial data"
+                            style="display:none">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span class="ms-1">Update</span>
+                    </button>
+                    <form class=btn-group method="POST" enctype="multipart/form-data">
+                        <label class="btn btn-outline-secondary" for="file-selector"
+                               data-bs-custom-class="custom-tooltip"
+                               data-bs-toggle="tooltip"
+                               data-bs-placement="bottom"
+                               title="Upload Turtle (.ttl) or RDF (.rdf) files">
+                            <input id="file-selector" type="file" style="display:none"
+                                   name="file">
+                            <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                            <span class="ms-1">Upload</span>
+                        </label>
+                    </form>
+                {% endif %}
+            </div>
+            <div class="row g-2 align-items-center">
+                <div class="mt-4" id="flash-message-axios" style="font-size: 1.15rem"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-table me-1"></i>
+            Table
+        </div>
+        <div class="card-body">
+            <table id="table_query" class="table order-column table-bordered table-hover nowrap" style="width:100%">
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Plotly graphs -->
+<div class="container-fluid px-4 mb-4" id="plotly_wrapper">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-palette me-1"></i>
+            <span id="graphTitle">Graphs</span>
+        </div>
+        <div class="card-body">
+            <div class="row g-2 align-items-center  mb-4">
+                <div class="btn-group-horizontal">
+                    {% if tdb_id == "SciGlass" %}
+                        <button type="button" name="scatter_plot" id="scatter_plot"
+                                class="btn btn-outline-secondary"
+                                style="border-color: var(--bs-border-color-translucent)">
+                            <i class="fi fi-br-chart-scatter"></i>
+                            <span class="ms-1">Scatter Plot</span>
+                        </button>
+                        <button type="button" name="histogram_plot" id="histogram_plot"
+                                class="btn btn-outline-secondary"
+                                style="border-color: var(--bs-border-color-translucent)">
+                            <i class="fa-solid fa-chart-column"></i>
+                            <span class="ms-1">Histogram Plot</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="ternary_plot"
+                                style="border-color: var(--bs-border-color-translucent)">
+                            <i class="fi fi-br-triangle"></i>
+                            <span class="ms-1">Ternary Plot</span>
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="container-fluid px-0">
+                <div class="row align-items-center">
+                    <div class="row align-middle">
+                        <div class="input-group mb-3" style="display: none">
+                            <span class="input-group-text">X: </span>
+                            <select class="form-select" id="xaxis">
+                            </select>
+                        </div>
+                        <div class="input-group mb-3" style="display: none">
+                            <span class="input-group-text">Y: </span>
+                            <select class="form-select" id="yaxis">
+                            </select>
+                        </div>
+                        <div class="input-group mb-3" style="display: none">
+                            <span class="input-group-text">Property: </span>
+                            <select class="form-select" id="propertyMenu">
+                            </select>
+                        </div>
+                        <div class="align-items-center mb-3" style="display: none">
+                            <ul id="oxideList" class="list-group mt-1 px-0">
+                            </ul>
+                        </div>
+                        <div class="input-group mb-3" style="display: none">
+                            <span class="input-group-text" style="width: 157.917px;justify-content: center;">Glass ID: </span>
+                            <select class="form-select" id="glassIdMenu">
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row align-middle">
+                        <div id="myDiv"></div>
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+</div>
+
+<!-- Endpoint -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-server me-1"></i>
+            SPARQL Endpoints
+        </div>
+        <div class="card-body">
+            <div class="row g-2 align-items-center column-gap-4">
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <input type="text" class="form-control" readonly
+                                   value="{{ ownurl }}/api/jena/{{ tdb_id }}/sparql"
+                                   id="query_endpoint_link">
+                            <label for="query_endpoint_link">Query Endpoint</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                                data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top" title=""
+                                onclick="CopyToClipboard('query_endpoint_link')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <input type="text" class="form-control" readonly
+                                   value="{{ ownurl }}/api/jena/{{ tdb_id }}/update"
+                                   id="update_endpoint_link">
+                            <label for="update_endpoint_link">Update Endpoint</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                                data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top" title=""
+                                onclick="CopyToClipboard('update_endpoint_link')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block script %}
+<!--default fontsize is small, can be changed using style .treejs at top to fix-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/treejs/1.8.3/tree.min.js"
+        integrity="sha512-ia0SBL/FE7YbHU5Wn4Qxzm12zOgNZ7FOp76oGgi/+34G8KLo9Fa9f9tzGC9injQs75EjxaHq9a7iSoup8k8BAA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+    const json_file = JSON.parse('{{ property_tree | tojson | safe }}');
+</script>
+<!--<script src="../static/js/property.min.js"></script>-->
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/property.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+
+<!--oxide checkbox listener-->
+
+{#<script src="../static/js/oxide.min.js?v=1"></script>#}
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/oxide.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<!--<script src="../static/js/sparql.min.js?v=1"></script>-->
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/sparql.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/glass_mapping.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<!--<script src="../static/js/plot.min.js?v=1"></script>-->
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/plot.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<script src="https://unpkg.com/@triply/yasgui@4.2.28/build/yasgui.min.js"></script>
+
+<script>
+    // see https://triply.cc/docs/yasgui-api/
+    Yasgui.Yasr.plugins.table = null; // disable the table of Yasgui, and use custom designed datatables instead
+    Yasgui.Yasr.plugins.response = null; // disable the response of Yasgui
+
+    let yasgui_view = document.getElementById("yasgui");
+    let yasgui;
+
+    if (yasgui_view) {
+        yasgui = new Yasgui(yasgui_view, {
+            requestConfig: {endpoint: "http://example.com/sparql"},
+            // Allow resizing of the Yasqe editor
+            // resizeable: false, // no effect
+            copyEndpointOnNewTab: false,
+            persistencyExpire: 0, // default: 30 days // set to 0 to always load the default query on page load
+        });
+        // Get a Tab. Returns the current Tab if no tab id is given.
+        {#console.log("code = " + yasgui.getTab().yasqe.getValue());#}
+
+    }
+
+</script>
+{% endblock %}
