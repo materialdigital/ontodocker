@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+
+{% block style %}
+<!-- yasgui Style note: yasgui styles will affect the Style of DataTables styles, vice versa! So I modify it and serve locally-->
+<!--    <link href="https://unpkg.com/@triply/yasgui/build/yasgui.min.css" rel="stylesheet" type="text/css" />-->
+<link href="../static/css/yasgui/yasgui.min.css" rel="stylesheet" />
+
+<style>
+    .fi-br-triangle:before {
+        content: "\f961";
+        top: 2px !important;
+        position: relative !important;
+    }
+
+    .treejs {
+        font-size: 20px !important;
+    }
+
+    .treejs .treejs-node__checked>.treejs-checkbox:before,
+    .treejs .treejs-node__halfchecked>.treejs-checkbox:before {
+        background-color: #509ee3 !important;
+        border-color: #509ee3 !important;
+    }
+</style>
+
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+
+    {% if not tdb_id %}
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+    <script>
+        showToastMessage('{{ message.category }}', '{{ message.message|safe }}') // use |safe in case of newline \n in string
+    </script>
+    {% endfor %}
+    {% else %}
+    <div>
+        <div class="row align-items-center">
+            <div class="col">
+                <h4 class="mt-3 mb-3">
+                    <span id="tdb_id">{{ tdb_id }}</span>
+                </h4>
+            </div>
+            {% if isAdminRole or isReadWriteRole %}
+            <div class="col-auto">
+                <form action="/jena/{{ tdb_id }}/clear_cache" method="GET" id="clear_dataset_cache"
+                    style="display: inline-block;">
+                    <input type="hidden" name="tdb_id" value='{{ tdb_id }}'>
+                    <button type="submit" name="destroy" class="btn btn-outline-secondary">
+                        Clear cache
+                    </button>
+                </form>
+            </div>
+            <div class="col-auto">
+                <!--                    <form class=btn-group method="POST">-->
+                <form action="/destroy_dataset" method="POST" id="destroy_dataset" style="display: inline-block;">
+                    <input type="hidden" name="tdb_id" value='{{ tdb_id }}'>
+                    <button type="submit" name="destroy" class="btn btn-danger"
+                        onclick="return confirm('Are you sure you want to remove this dataset?\n\nThis action cannot be reversed.')">
+                        Remove this dataset
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+    <script>
+        showToastMessage('{{ message.category }}', '{{ message.message|safe }}') // use |safe in case of newline \n in string
+    </script>
+    {% endfor %}
+</div>
+
+
+{% if tdb_id %}
+<!-- Endpoints -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-server me-1"></i>
+            Endpoints
+        </div>
+        <div class="card-body">
+            <div class="row g-2 align-items-center column-gap-4">
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <input type="text" class="form-control" readonly
+                                value="{{ ownurl }}/api/v1/jena/{{ tdb_id }}/sparql" id="query_endpoint_link">
+                            <label for="query_endpoint_link">SPARQL Endpoint</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="" onclick="CopyToClipboard('query_endpoint_link')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <input type="text" class="form-control" readonly
+                                value="{{ ownurl }}/api/v1/jena/{{ tdb_id }}" id="data_endpoint_link">
+                            <label for="data_endpoint_link">Data Endpoint</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="" onclick="CopyToClipboard('data_endpoint_link')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Query Field -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header pt-2">
+            <div class="row g-3 justify-content-between align-items-center">
+                <div class="col-6 col-md">
+                    <ul class="nav nav-tabs card-header-tabs" data-bs-tabs="tabs">
+                        <!--Yasgui Code Editor Tab-->
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#sparql_code_view">
+                                <i class="fa-solid fa-code" aria-hidden="true"></i>
+                                <span class="ms-1">Code Editor</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="col col-md-auto">
+                    <button type="button" class="btn btn-primary-outline copy-button py-0" id="copy_code"
+                         data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                        data-bs-placement="left"
+                        onclick="navigator.clipboard.writeText(yasgui.getTab().yasqe.getValue());"><!--color: #6c757d;-->
+                        <!--HTTPS only-->
+                        <i class="fa-regular fa-copy fa-fw"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+        <!-- content -->
+        <div class="card-body tab-content">
+            <!-- Tab (SPARQL Code View2)-->
+            <div class="tab-pane show active mb-4" id="sparql_code_view">
+                <div class="row">
+                    <form method="POST" id="qform" enctype="application/x-www-form-urlencoded">
+                        <div id="yasgui"></div>
+                    </form>
+                </div>
+                <div class="col float-end" style="color: #4f525c;">
+                    <a class="" target="_blank" href="https://www.w3.org/TR/sparql11-overview/">
+                        <span>W3C SPARQL Overview</span>
+                    </a>
+                    <span class="ms-1"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" form="qform" name="query" value="query" class="btn btn-primary"
+                    data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                    title="Run the query/code">
+                    <i class="fa-solid fa-play"></i>
+                    <span class="ms-1">Run</span>
+                </button>
+                {% if isAdminRole or isReadWriteRole %}
+                <button type="submit" form="qform" name="update" id="updateButton" class="btn btn-outline-secondary"
+                    data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                    title="Update partial data" style="display:none">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span class="ms-1">Update</span>
+                </button>
+                <form class=btn-group method="POST" enctype="multipart/form-data">
+                    <label class="btn btn-outline-secondary" for="file-selector" data-bs-custom-class="custom-tooltip"
+                        data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        title="Upload Turtle (.ttl) or RDF (.rdf) files">
+                        <input id="file-selector" type="file" style="display:none" name="file">
+                        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                        <span class="ms-1">Upload</span>
+                    </label>
+                </form>
+                {% endif %}
+            </div>
+            <div class="row g-2 align-items-center">
+                <div class="mt-4" id="flash-message-axios" style="font-size: 1.15rem"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid px-4 mb-4 d-none" id="table-container">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-table me-1"></i>
+            Result Table
+        </div>
+        <div class="card-body">
+            <table id="table_query" class="table order-column table-bordered table-hover nowrap">
+            </table>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- WebVOWL -->
+<div class="container-fluid px-4 mb-4 {% if ds_isempty %}d-none{% endif %}" id="webvowl_container">
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-2 align-items-center column-gap-4">
+                <div class="input-group mb-3">
+                    <div class="form-floating">
+                        <iframe style="height:700px;width:100%;" id="webvowl_iframe" src="{% if not ds_isempty %}{{ url_for('static', path='vowl/index.html' ) }}{% endif %}" data-src="{{ url_for('static', path='vowl/index.html' ) }}"
+                            frameborder="0"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid px-4 mb-4 {% if not ds_isempty %}d-none{% endif %}" id="dataset_empty_hint">
+    <div class="card mb-4">
+        <div class="card-body">
+            Dataset is empty
+        </div>
+    </div>
+</div>
+
+
+
+{% endif %}
+
+{% endblock %}
+
+{% block script %}
+<!--default fontsize is small, can be changed using style .treejs at top to fix-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/treejs/1.8.3/tree.min.js"
+    integrity="sha512-ia0SBL/FE7YbHU5Wn4Qxzm12zOgNZ7FOp76oGgi/+34G8KLo9Fa9f9tzGC9injQs75EjxaHq9a7iSoup8k8BAA=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<!--<script src="../static/js/property.min.js"></script>-->
+<script>
+        (() => {
+            const script = document.createElement("script");
+            script.src = "../static/js/property.min.js?=" + new Date().getTime();
+            document.body.appendChild(script);
+        })();
+</script>
+
+
+<!--oxide checkbox listener-->
+
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/oxide.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<!--<script src="../static/js/sparql.min.js?v=1"></script>-->
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/sparql.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/glass_mapping.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<!--<script src="../static/js/plot.min.js?v=1"></script>-->
+<script>
+    (() => {
+        const script = document.createElement("script");
+        script.src = "../static/js/plot.min.js?=" + new Date().getTime();
+        document.body.appendChild(script);
+    })();
+</script>
+
+<script src="https://unpkg.com/@triply/yasgui@4.2.28/build/yasgui.min.js"></script>
+
+<script>
+    // see https://triply.cc/docs/yasgui-api/
+    Yasgui.Yasr.plugins.table = null; // disable the table of Yasgui, and use custom designed datatables instead
+    Yasgui.Yasr.plugins.response = null; // disable the response of Yasgui
+
+    let yasgui_view = document.getElementById("yasgui");
+    let yasgui;
+
+    if (yasgui_view) {
+        yasgui = new Yasgui(yasgui_view, {
+            requestConfig: { endpoint: "http://example.com/sparql" },
+            // Allow resizing of the Yasqe editor
+            // resizeable: false, // no effect
+            copyEndpointOnNewTab: false,
+            persistencyExpire: 0, // default: 30 days // set to 0 to always load the default query on page load
+        });
+
+    }
+
+</script>
+{% endblock %}

@@ -1,0 +1,512 @@
+/*!
+Custom style that replaces some of the styles from Start Bootstrap and Bootstrap 5
+*/
+
+.tooltip .tooltip-inner {
+    text-align: left;
+}
+
+.custom-tooltip {
+    --bs-tooltip-bg: #2e353b;
+}
+
+#btn-back-to-top {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    display: none;
+    z-index: 40;
+    opacity: 0.5;
+}
+
+.navbar {
+    display: flex;
+    -webkit-box-align: center;
+    align-items: center;
+    padding: 0 1rem;
+    border-bottom: 2px solid rgb(238, 236, 236);
+    background-color: rgb(255, 255, 255);
+    transition: border-bottom-color 200ms ease 0s;
+}
+
+.sb-nav-fixed #layoutSidenav #layoutSidenav_nav .sb-sidenav .sb-sidenav-menu {
+    padding: 10px 10px;
+    box-shadow: rgba(0, 0, 0, 0.13) 0px 1px 3px !important;
+}
+
+.sb-sidenav-light .sb-sidenav-footer {
+    background-color: rgb(249, 251, 252) !important;
+    box-shadow: rgba(0, 0, 0, 0.13) 0px 1px 3px !important;
+}
+
+.navbar-expand .navbar-nav .nav-link {
+    color: #509ee3 !important;
+}
+
+.sb-sidenav .sb-sidenav-menu .nav .nav-link {
+    border-radius: 8px;
+    margin-bottom: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    color: #4F525C;
+}
+
+.sb-sidenav .sb-sidenav-menu .nav .nav-link.active {
+    color: rgb(80, 158, 227);
+    background-color: rgba(80, 158, 227, 0.2) !important;
+}
+
+.sb-sidenav .sb-sidenav-menu .nav .sb-sidenav-menu-heading {
+    padding: 8px 1rem 8px;
+    color: #4F525C;
+}
+
+.sb-sidenav-light .sb-sidenav-menu .nav-link:hover {
+    color: rgb(80, 158, 227);
+    background-color: rgba(80, 158, 227, 0.2) !important;
+}
+
+
+.h1, .h2, .h3, .h4, .h5, .h6, h1, h2, h3, h4, h5, h6 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    line-height: 1.2;
+    color: #4C5773;
+}
+
+:root, [data-bs-theme=light] {
+    --bs-body-color: #4c5773 !important;
+    --bs-link-color: #509ee3 !important;
+    --bs-link-color-rgb: 80, 158, 227 !important;
+    --bs-link-hover-color: #509ee3 !important;
+    --bs-primary-text-emphasis: #232629 !important;
+    --bs-emphasis-color: #4c5773 !important;
+    --bs-emphasis-color-rgb: 76, 87, 115 !important;
+    --bs-danger-rgb: 237, 110, 110 !important;
+    --bs-success-rgb: 56, 202, 135 !important;
+}
+
+.form-check-input:checked {
+    background-color: #509ee3 !important;
+    border-color: #509ee3 !important;
+}
+
+/*set margin-left to 0 so that the input-group-append class does not overlap with the input in the left*/
+.input-group > :not(:first-child):not(.dropdown-menu):not(.valid-tooltip):not(.valid-feedback):not(.invalid-tooltip):not(.invalid-feedback) {
+    margin-left: 0 !important;
+}
+
+.nav-pills {
+    --bs-nav-pills-link-active-bg: #509ee3 !important;
+    --bs-link-color: #509ee3 !important;
+    --bs-link-hover-color: rgba(80, 158, 227, 0.88) !important;
+}
+
+.dropdown-menu {
+    --bs-dropdown-link-active-bg: #509ee3 !important;
+    --bs-dropdown-link-color: #4C5773 !important;
+    --bs-dropdown-link-hover-color: rgb(80, 158, 227);
+    --bs-dropdown-link-hover-bg: rgb(249, 251, 252);
+}
+
+.navbar-nav .dropdown-menu {
+    background-color: white;
+    border: 1px solid rgb(237, 242, 245);
+    border-radius: 6px;
+    box-shadow: rgba(0, 0, 0, 0.08) 0px 7px 20px;
+    line-height: 24px;
+    padding: 0.5rem
+}
+
+.dropdown-item {
+    border-radius: 6px;
+}
+
+
+body {
+    background-color: rgb(249, 251, 252) !important;
+}
+
+.card {
+    --bs-card-color: #232629 !important;
+    box-shadow: rgba(0, 0, 0, 0.13) 0px 1px 3px !important;
+    color: #4C5773 !important;
+}
+
+.btn-primary {
+    --bs-btn-bg: #509ee3 !important;
+    --bs-btn-hover-bg: rgba(80, 158, 227, 0.88) !important;
+    --bs-btn-hover-border-color: 1px solid #509ee3 !important;
+    --bs-btn-focus-shadow-rgb: 49, 132, 253 !important;
+    --bs-btn-active-bg: rgba(80, 158, 227, 0.88) !important;
+    --bs-btn-active-border-color: #509ee3 !important;
+    --bs-btn-disabled-bg: #509ee3 !important;
+    --bs-btn-disabled-border-color: #509ee3 !important;
+    border: 1px solid #509ee3 !important;
+}
+
+.btn-light {
+    --bs-btn-color: #4b5675 !important;
+    --bs-btn-bg: #f1f1f2 !important;
+    --bs-btn-border-color: #dbdfe9 !important;
+    --bs-btn-hover-color: #4b5675 !important;
+    --bs-btn-hover-bg: #dbdfe9 !important;
+    --bs-btn-focus-shadow-rgb: 211, 212, 213;
+    --bs-btn-active-color: #4b5675 !important;
+    --bs-btn-active-bg: #dbdfe9 !important;
+    --bs-btn-disabled-border-color: #dbdfe9 !important;
+}
+
+
+.btn-success {
+    --bs-btn-bg: #38ca87 !important;
+    --bs-btn-hover-bg: rgba(56, 202, 135, 0.88) !important;
+    --bs-btn-hover-border-color: 1px solid #38ca87 !important;
+    --bs-btn-focus-shadow-rgb: 143, 193, 92 !important;
+    --bs-btn-active-bg: rgba(56, 202, 135, 0.88) !important;
+    --bs-btn-active-border-color: #38ca87 !important;
+    --bs-btn-disabled-bg: #38ca87 !important;
+    --bs-btn-disabled-border-color: #38ca87 !important;
+    border: 1px solid #38ca87 !important;
+}
+
+.btn-danger {
+    background-color: #ed6e6e !important;
+    --bs-btn-bg: #ed6e6e !important;
+    --bs-btn-hover-bg: rgba(237, 110, 110, 0.88) !important;
+    --bs-btn-hover-border-color: 1px solid #ed6e6e !important;
+    --bs-btn-focus-shadow-rgb: 239, 127, 127 !important;
+    --bs-btn-border-color: #ed6e6e !important;
+    --bs-btn-active-bg: rgba(237, 110, 110, 0.88) !important;
+    --bs-btn-active-border-color: #ed6e6e !important;
+    --bs-btn-disabled-bg: #ed6e6e !important;
+    --bs-btn-disabled-border-color: #ed6e6e !important;
+    border: 1px solid #ed6e6e !important;
+}
+
+.btn-outline-primary {
+    --bs-btn-color: #509ee3 !important;
+    --bs-btn-border-color: #509ee3 !important;
+    --bs-btn-hover-bg: #509ee3 !important;
+    --bs-btn-hover-border-color: #509ee3 !important;
+    --bs-btn-active-bg: #509ee3 !important;
+    --bs-btn-active-border-color: #509ee3 !important;
+    --bs-btn-disabled-color: #509ee3 !important;
+    --bs-btn-disabled-border-color: #509ee3 !important;
+}
+
+.btn-outline-secondary {
+    --bs-btn-color: #4c5773 !important;
+    --bs-btn-border-color: #dae1e8 !important;
+    --bs-btn-hover-color: #509ee3 !important;
+    --bs-btn-hover-bg: #f9fbfc !important;
+    --bs-btn-disabled-border-color: #dae1e8 !important;
+}
+
+.btn-outline-danger {
+    --bs-btn-color: #ed6e6e !important;
+    --bs-btn-border-color: #ed6e6e !important;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #ed6e6e !important;
+    --bs-btn-hover-border-color: #ed6e6e !important;
+    --bs-btn-focus-shadow-rgb: 220, 53, 69;
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: #ed6e6e !important;
+    --bs-btn-active-border-color: #ed6e6e !important;
+    --bs-btn-disabled-color: #ed6e6e !important;
+    --bs-btn-disabled-border-color: #ed6e6e !important;
+}
+
+
+.btn-primary:hover, .btn-primary:focus {
+    color: #ffffff !important;
+    border-color: #509ee3 !important;
+    background-color: rgba(80, 158, 227, 0.88) !important;
+    transition: all 200ms linear;
+    transition-property: color, border-color, background-color;
+}
+
+
+.btn-success:hover, .btn-success:focus {
+    color: #ffffff !important;
+    border-color: #38ca87 !important;
+    background-color: rgba(56, 202, 135, 0.88) !important;
+    transition: all 200ms linear;
+    transition-property: color, border-color, background-color;
+}
+
+.btn-danger:hover, .btn-danger:focus {
+    color: #ffffff !important;
+    border-color: #ed6e6e !important;
+    background-color: rgba(237, 110, 110, 0.88) !important;
+    transition: all 200ms linear;
+    transition-property: color, border-color, background-color;
+}
+
+.btn-outline-secondary:hover, .btn-outline-secondary:focus {
+    color: #509ee3 !important;
+    border-color: #dae1e8 !important; /* rgb(224, 236, 236) !important;*/
+    background-color: #fff !important; /* #f9fbfc !important;*/
+    transition: all 200ms linear;
+    transition-property: color, border-color, background-color;
+}
+
+.btn-outline-secondary:active {
+    color: #509ee3 !important;
+    background-color: #f9fbfc !important;
+    border-color: rgb(224, 236, 236) !important;
+}
+
+
+.accordion {
+    --bs-accordion-btn-focus-box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.25) !important;
+}
+
+.accordion-item {
+    box-shadow: rgba(0, 0, 0, 0.13) 0px 1px 3px !important;
+    color: #4C5773 !important;
+}
+
+.accordion-button {
+    background-color: rgba(var(--bs-body-color-rgb), 0.03);
+}
+
+.accordion-button:not(.collapsed) {
+    color: var(--bs-accordion-active-color);
+    background-color: rgba(var(--bs-body-color-rgb), 0.03);
+    box-shadow: inset 0 calc(-1 * var(--bs-accordion-border-width)) 0 var(--bs-accordion-border-color);
+}
+
+.nav-link {
+    color: #949AAB;
+}
+
+
+.nav-tabs .nav-item.show .nav-link, .nav-tabs .nav-link.active {
+    color: #4C5773 !important;
+}
+
+.nav-link:focus, .nav-link:hover {
+    color: var(--bs-nav-link-hover-color);
+}
+
+/*!hide control bar and run button of Yasgui*/
+.yasgui .autocompleteWrapper {
+    display: none !important;
+}
+
+.yasr, .yasqe_buttons, .yasgui .controlbar {
+    display: none !important;
+}
+
+.yasqe .CodeMirror {
+    resize: vertical !important;
+    border-radius: var(--bs-border-radius) !important;
+}
+
+/*hide verticalresizehandler*/
+.yasqe .resizeWrapper {
+    display: none !important;
+}
+
+.CodeMirror {
+    font-size: 18px;
+}
+
+.CodeMirror-code {
+    font-size: 18px;
+}
+
+table.dataTable.order-column tbody tr > .sorting_1,
+table.dataTable.order-column tbody tr > .sorting_2,
+table.dataTable.order-column tbody tr > .sorting_3 {
+    background-color: #f9f9f9;
+}
+
+div.dtfc-left-top-blocker, div.dtfc-right-top-blocker {
+    background-color: transparent !important;
+}
+
+table.dataTable.table-bordered.dtfc-has-left, table.dataTable tbody tr > .dtfc-fixed-left, table.dataTable tbody tr > .dtfc-fixed-right {
+    border-left-color: #DDD !important;
+}
+
+
+div.dataTables_scrollBody {
+    border-left: 0 !important;
+}
+
+.dataTables_wrapper .dataTables_processing {
+    z-index: 3000;
+}
+
+table.dataTable td, table.dataTable th {
+    vertical-align: middle;
+}
+
+/* see: https://datatables.net/forums/discussion/40100/replacing-original-sorting-icons-with-bootstrap-4 */
+/* dataTables CSS modification & positioning */
+table.dataTable thead .sorting:before,
+table.dataTable thead .sorting_asc:before,
+table.dataTable thead .sorting_desc:before,
+table.dataTable thead .sorting_asc_disabled:before,
+table.dataTable thead .sorting_desc_disabled:before {
+    content: "" !important;
+}
+
+table.dataTable thead .sorting:after,
+table.dataTable thead .sorting_asc:after,
+table.dataTable thead .sorting_desc:after,
+table.dataTable thead .sorting_asc_disabled:after,
+table.dataTable thead .sorting_desc_disabled:after {
+    content: "" !important;
+}
+
+table.dataTable thead th.sorting:after,
+table.dataTable thead th.sorting_asc:after,
+table.dataTable thead th.sorting_desc:after {
+    top: 45% !important;
+    font-family: "Font Awesome 6 Free" !important;
+}
+
+table.dataTable thead .sorting:after {
+    color: #4F525C !important;
+    content: "\f0dc" !important;
+}
+
+table.dataTable thead .sorting_asc::after {
+    color: #4F525C !important;
+    opacity: 0.6 !important;
+    content: "\f884" !important;
+}
+
+table.dataTable thead .sorting_desc::after {
+    color: #4F525C !important;
+    opacity: 0.6 !important;
+    content: "\f161" !important;
+}
+
+table.dataTable.dtr-inline.collapsed > tbody > tr > td.dtr-control:before, table.dataTable.dtr-inline.collapsed > tbody > tr > th.dtr-control:before {
+    width: 1rem;
+    height: 1rem;
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900; /* this is a must to add!*/
+    content: "\f105" !important;
+}
+
+table.dataTable.dtr-inline.collapsed > tbody > tr.parent > td.dtr-control::before, table.dataTable.dtr-inline.collapsed > tbody > tr.parent > th.dtr-control::before {
+    font-weight: 900; /* this is a must to add!*/
+    content: "\f107" !important;
+}
+
+/*change DataTables default row select background color style*/
+:root {
+    --dt-row-selected: 98, 168, 230 !important;
+}
+
+.pagination {
+    --bs-pagination-active-bg: #509ee3 !important;
+    --bs-pagination-active-border-color: #509ee3 !important;
+}
+
+/*to fix the issue that the letter "g" be cut due to small line-height and */
+.form-floating > .form-select {
+    padding-bottom: 0.5rem !important;
+    line-height: 1.5 !important;
+}
+
+.progress, .progress-stacked {
+    --bs-progress-bar-bg: #509ee3 !important;
+}
+
+.dtsb-title {
+    color: #4c5773 !important;
+}
+
+.btn.disabled, .btn:disabled {
+    pointer-events: auto !important;
+    cursor: not-allowed !important;
+}
+
+/*column filter style*/
+thead input {
+    width: 100%;
+}
+
+/*plotly*/
+g.hovertext > path {
+    opacity: 0.85 !important;
+}
+
+/*flaticon*/
+.fi-br-chart-scatter:before {
+    content: "\f2d3";
+    top: 2px !important;
+    position: relative !important;
+}
+
+/*google icon*/
+/* fallback */
+@font-face {
+    /* this src is static icon */
+    font-family: 'Material Symbols Outlined';
+    font-style: normal;
+    font-weight: 400;
+    src: url(./google_font/kJF1BvYX7BgnkSrUwT8OhrdQw4oELdPIeeII9v6oDMzByHX9rA6RzaxHMPdY43zj-jCxv3fzvRNU22ZXGJpEpjC_1v-p_4MrImHCIJIZrDCvHOej.woff2) format('woff2');
+}
+
+.material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+}
+
+#sidebarToggle:hover {
+    background: rgba(var(--bs-body-color-rgb), 0.03);
+}
+
+
+.bg-primary {
+    background-color: #e7f1fa !important;
+    color: #0070d4 !important;
+    border-color: #d0e2f2 !important;
+}
+
+.toast-success, .bg-success {
+    background-color: #d6f0e0 !important;
+    color: #0d6831 !important;
+    border-color: #c0e7d0;
+}
+
+.toast-warning, .bg-warning {
+    background-color: #fbf0da !important;
+    color: #73510d !important;
+    border-color: #f9e4be;
+}
+
+.toast-danger, .bg-danger {
+    background-color: #f9e1e5 !important;
+    color: #af233a !important;
+    border-color: #f4c8cf;
+}
+
+.toast-container {
+    --bs-toast-zindex: 38 !important;
+    top: 2.5rem !important;
+}
+
+.sb-sidenav-menu-line {
+    color: #949AAB;
+    margin: 0;
+}

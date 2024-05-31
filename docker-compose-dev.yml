@@ -1,0 +1,50 @@
+version: '3.7'
+
+services:
+  ontodocker:
+    container_name: ontodocker
+    build: fastapi_app
+    command: python3 -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 
+    env_file:
+      - .env
+    volumes:
+      - ./fastapi_app/app:/app
+      - ./data:/data
+    depends_on:
+      - fuseki
+      #- blazegraph
+    networks:
+      - testo
+      #- default
+    ports:
+      - "8000:${ONTODOCKER_RUN_PORT}"
+      # - 5678:5678
+#    restart: on-failure
+
+  fuseki:
+    image: secoresearch/fuseki:4.9.0
+    container_name: fuseki
+    volumes:
+      - ./data/fuseki/shiro.ini:/jena-fuseki/shiro.ini
+      - ./data/fuseki/databases:/fuseki-base/databases
+      - ./data/fuseki/configuration:/fuseki-base/configuration
+    user: root  # Run the container with root user
+    environment:
+      - JAVA_OPTIONS=-Xmx4096m -Xms4096m # TODO change this according to the memory of your PC/server
+      - ADMIN_PASSWORD=changeme # TODO
+      - ENABLE_DATA_WRITE=true
+      - ENABLE_UPDATE=true
+      - ENABLE_UPLOAD=true
+      - QUERY_TIMEOUT=60000 # in milliseconds (60 seconds by default)
+    networks:
+      - testo
+      #- default
+    ports:
+      - "3030:3030"
+#    restart: on-failure
+
+
+networks:
+  testo:
+    name: testo
+    driver: bridge
