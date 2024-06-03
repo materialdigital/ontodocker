@@ -74,7 +74,7 @@ Create a `.env` file with the following contents and fill or change them accordi
 ```
 ONTODOCKER_RUN_PORT=8000
 ADMIN_EMAIL=
-JWT_SECRET_KEY=BvaH6klszRim4QX8709gAgUcJRQ
+JWT_SECRET_KEY=
 JWT_DEFAULT_DAYS_VALID=90
 JWT_MIN_DAYS_VALID=1
 JWT_MAX_DAYS_VALID=90
