@@ -1,50 +1,199 @@
 let table;
 let buttonName;
-let query_ui_mode = false; // if false, disable the plot functions
 let fixedColNum; // for query UI with enough width, no fixed column for code editor UI
 
 let mapped_head;
-let rawData;
+let tableData;
 
 let file;
 
 function updateApiKeyValidToFormat(apiKeyValidToTimestamp) {
     let newValidTo = "-";
     try {
-        newValidTo = new Date(apiKeyValidToTimestamp*1000).toLocaleString()
-        if(apiKeyValidToTimestamp*1000 < Date.now()) {
+        newValidTo = new Date(apiKeyValidToTimestamp * 1000).toLocaleString()
+        if (apiKeyValidToTimestamp * 1000 < Date.now()) {
             $("#api_key_valid_to").addClass("text-danger")
         } else {
             $("#api_key_valid_to").removeClass("text-danger")
         }
         showFlashMessage("success", "New API Key generated!", "html", $("#returnMessageContainer"));
-    } catch(e) {
+    } catch (e) {
         console.error(e)
     }
     $("#api_key_valid_to").text(newValidTo)
 }
 
+function createQueryOfNamedGraph(namedGraphIri) {
+    yasgui.addTab(true, { ...Yasgui.Tab.getDefaults(), name: "Named Graph Query" }).yasqe.setValue("\PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\nSELECT *\nFROM <" + namedGraphIri + ">\nWHERE {\n  ?sub ?pred ?obj .\n} LIMIT 10");
+}
+
 $(document).ready(function () {
 
-    $("#api_key_button").click(function() {
+    $("#named_graphs").DataTable({
+        pageLength: 5,
+        lengthMenu: [[5, 10, 20], [5, 10, 20]]
+    });
+
+    $("#downloadBackupBtn").click(function (e) {
+        e.preventDefault();
+        window.location.href = "/backup";
+    });
+
+    $("#restoreBackupBtn").click(function (e) {
+        e.preventDefault();
+        if ($("#restoreBackupForm input[type='file']").val() === "") {
+            showFlashMessage("warning", "Please select a backup file first", "html", $("#returnBackupMsgContainer"));
+            return;
+        }
+        if (confirm("Do you really want to restore the selected backup?\n\nNote: All data will be lost, also in case of error!") === false) {
+            return;
+        }
+        // Submit form with axios
+        const formData = new FormData($("#restoreBackupForm")[0]);
+
+        $("#restoreModal").modal('show')
+
+        axios.post("/restore", formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        }).then((response) => {
+            window.location = "/";
+        }).catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnBackupMsgContainer"));
+            $("#restoreModal").modal('hide')
+        });
+    });
+
+    $("#cancelBtn").click(function (e) {
+        e.preventDefault();
+        $(".action-button").show();
+        $(".action-loading-elem").hide();
+        $("#saveQueryContainer").hide();
+        $("#savedQueryMsgContainer").empty();
+        $("#cancelBtn").hide();
+    });
+
+    $("#saveQueryConfirmBtn").click(function (e) {
+        e.preventDefault();
+        $("#action-container").show();
+        $("#saveQueryContainer").hide();
+        $("#savedQueryMsgContainer").empty();
+        axios.post("/saved_queries", {
+            name: $("#queryName").val(),
+            query: yasgui.getTab().yasqe.getValue(),
+            public: $("#publicToggle").is(":checked")
+        }).then((response) => {
+            showFlashMessage("success", "Query successfully saved", "html", $("#savedQueryMsgContainer"), true);
+            $(".action-button").show();
+            $("#saveQueryContainer").hide();
+            $("#cancelBtn").hide();
+        }).catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#savedQueryMsgContainer"), true);
+            console.error(e);
+        });
+    });
+
+    $("#deleteQueryBtn").click(function (e) {
+        e.preventDefault();
+        $("#savedQueryMsgContainer").empty();
+        const queryId = $("#query_select").val();
+        if (confirm("Are you sure you want to delete the selected query?") === false) {
+            return;
+        }
+        axios.delete("/saved_queries/" + queryId).then((response) => {
+            $("#query_select option:selected").remove();
+            showFlashMessage("success", response.data, "html", $("#savedQueryMsgContainer"), true);
+            $(".action-button").show();
+            $(".action-loading-elem").hide();
+            $("#saveQueryContainer").hide();
+            $("#cancelBtn").hide();
+        }).catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#savedQueryMsgContainer"), true);
+            console.error(e);
+        });
+    });
+
+    $("#loadSelectedQueryBtn").click(function (e) {
+        e.preventDefault();
+        $("#savedQueryMsgContainer").empty();
+        const queryId = $("#query_select").val();
+        axios.get("/saved_queries/" + queryId).then((response) => {
+            const query = response.data;
+            yasgui.addTab(true, { ...Yasgui.Tab.getDefaults(), name: query.name }).yasqe.setValue(query.query);
+            $("#cancelBtn").click();
+            showFlashMessage("success", "Query \"" + query.name + "\" loaded", "html", $("#savedQueryMsgContainer"), true);
+        }).catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#savedQueryMsgContainer"), true);
+            console.error(e);
+        });
+    });
+
+    $("#load_query_btn").click(function (e) {
+        e.preventDefault();
+        $("#savedQueryMsgContainer").empty();
+        axios.get("/saved_queries").then((response) => {
+            const savedQueries = response.data;
+            $("#query_select").empty();
+            if (savedQueries.length === 0) {
+                showFlashMessage("warning", "No saved queries available", "html", $("#savedQueryMsgContainer"), true);
+                return;
+            }
+            savedQueries.forEach(query => {
+                optionName = query.name;
+                if (query.public === true) {
+                    optionName += " (public)";
+                }
+                $('<option>').val(query.id).text(optionName).attr('data-can-delete', query.canDelete).appendTo('#query_select');
+            });
+            $("#query_select").show();
+            $("#cancelBtn").show();
+            $(".action-loading-elem").show();
+            $("#load_query_btn").hide();
+            $(".action-save-copy-button").hide();
+            $("#query_select").change();
+        }).catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#savedQueryMsgContainer"), true);
+            console.error(e);
+        });
+    });
+
+    $("#save_query_btn").click(function () {
+        $("#savedQueryMsgContainer").empty();
+        $("#queryName").val(yasgui.getTab().getName());
+        $("#saveQueryContainer").show();
+        $("#cancelBtn").show();
+        $(".action-button").hide();
+    });
+
+    $("#query_select").change(function () {
+        $("#savedQueryMsgContainer").empty();
+        if ($("#query_select option:selected").attr("data-can-delete") == "true") {
+            $("#deleteQueryBtn").show();
+        } else {
+            $("#deleteQueryBtn").hide();
+        }
+    });
+
+    $("#api_key_button").click(function () {
         $("#returnMessageContainer").text("");
     });
 
     updateApiKeyValidToFormat($("#api_key_valid_to").text());
 
-    $("body").on("click", "#api_key_days_valid_refresh", function(e) {
+    $("body").on("click", "#api_key_days_valid_refresh", function (e) {
         e.preventDefault();
-        axios.get("/refresh_api_key?valid="+$("#api_key_days_valid").val())
-        .then(resp => {
-            $("#api_key").val(resp.data.apiKey);
-            updateApiKeyValidToFormat(resp.data.validTo)
-        })
-        .catch((e) => {
-            showFlashMessage("danger", e.response.data, "html", $("#returnMessageContainer"));
-        })
+        axios.get("/refresh_api_key?valid=" + $("#api_key_days_valid").val())
+            .then(resp => {
+                $("#api_key").val(resp.data.apiKey);
+                updateApiKeyValidToFormat(resp.data.validTo)
+            })
+            .catch((e) => {
+                showFlashMessage("danger", e.response.data, "html", $("#returnMessageContainer"));
+            })
     })
 
-// Add a click event listener to the buttons inside the form
+    // Add a click event listener to the buttons inside the form
     $("[form='qform']").on("click", function () {
         buttonName = $(this).attr("name");
     });
@@ -61,58 +210,38 @@ $(document).ready(function () {
         let requestBody, message;
 
         // let graphTitle = document.getElementById("graphTitle");
-
-        if (tab === "#sparql_code_view") {
-            query_ui_mode = false;
-            $('#plotly_wrapper :button').prop('disabled', true);
-            // graphTitle.textContent = "Graphs (not available when using the code editor for the query)";
-            // Plotly.purge('myDiv');
-            // clearOptions();
+        console.debug(tab)
+        // $('#plotly_wrapper :button').prop('disabled', true);
+        // graphTitle.textContent = "Graphs (not available when using the code editor for the query)";
+        // Plotly.purge('myDiv');
+        // clearOptions();
 
 
-            console.debug("Open Yasgui Code Editor")
-            requestBody = yasgui && yasgui.getTab() && yasgui.getTab().yasqe.getValue();
-            if (!requestBody) {
-                // const emptyMessage = "SPARQL Query: Empty query string";
-                const emptyMessage = `
-                    <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-warning-rgb));"></i>
-                    <span class='ms-1'>SPARQL Query: Empty query string
-                    </span>
-                    `;
-                showFlashMessage("warning", emptyMessage, "html");
-                return false;
-            }
-        } else {
-            query_ui_mode = true;
-
-            console.debug("Directly generate code from Query UI");
-
-            [requestBody, message] = generate_SPARQL_code(tdbId);
-            if (!requestBody) {
-                const Message = `
-                    <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-warning-rgb));"></i>
-                    <span class='ms-1'>${message}
-                    </span>
-                    `;
-                showFlashMessage("warning", Message, "html");
-                return false;
-            } else {
-
-            }
+        console.debug("Open Yasgui Code Editor")
+        requestBody = yasgui && yasgui.getTab() && yasgui.getTab().yasqe.getValue();
+        if (!requestBody) {
+            // const emptyMessage = "SPARQL Query: Empty query string";
+            const emptyMessage = `
+                <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-warning-rgb));"></i>
+                <span class='ms-1'>SPARQL Query: Empty query string
+                </span>
+                `;
+            showFlashMessage("warning", emptyMessage, "html");
+            return false;
         }
 
         let action = "query";
-        let form_data = jQuery.param({query: encodeURIComponent("")});
+        let form_data = jQuery.param({ query: encodeURIComponent("") });
         if (buttonName === "query") {
             action = "query";
-            form_data = jQuery.param({query: requestBody});
+            form_data = jQuery.param({ query: requestBody });
         } else if (buttonName === "update") {
             action = "update";
-            form_data = jQuery.param({update: requestBody});
+            form_data = jQuery.param({ update: requestBody });
         }
 
         const url = `/${action}`;
-        const queryParams = {tdb_id: tdbId};
+        const queryParams = { tdb_id: tdbId };
 
 
         const waitingMessage = setInterval(() => console.debug('Still waiting...'), 1000);
@@ -152,22 +281,11 @@ $(document).ready(function () {
 
                 //mapping header
                 mapped_head = response.data.head.map(headerObject => {
-                    if (tdbId === 'SciGlass') {
-                        return {"title": sciglass_mapping[headerObject.title] || headerObject.title};
-                    } else {
-                        return {"title": headerObject.title};
-                    }
+                    return { "title": headerObject.title };
                 });
                 // console.debug("head=" + JSON.stringify(response.data.head))
                 // console.debug("mapped_head=" + JSON.stringify(mapped_head))
 
-                //mapping properties
-                if (selectedProps.length > 0) {
-                    selectedProps = selectedProps.map(property => {
-                        return sciglass_mapping[property] || property;
-                    });
-                    // console.debug("mapped_properties=" + selectedProps)
-                }
 
                 // let fixedColNum; // for query UI with enough width, no fixed column for code editor UI
                 if (document.documentElement.clientWidth > 780 && $('.nav-tabs a.nav-link.active').attr("href") === '#query_gui_view') {
@@ -176,11 +294,19 @@ $(document).ready(function () {
                     fixedColNum = 0
                 }
 
-                rawData = response.data.data;
+                tableData = response.data.data;
 
                 // console.debug('rawData:' + JSON.stringify(response.data.data));
 
-                table = createTable(rawData, mapped_head, tdbId);
+                table = createTable(tableData, mapped_head, tdbId);
+
+                if (!response.data.raw || response.data.raw === 0) {
+                    $("#raw_data").val("")
+                    $("#raw_data_container").hide();
+                } else {
+                    $("#raw_data_container").show();
+                    $("#raw_data").val(response.data.raw);
+                }
 
                 if ($('.nav-tabs a.nav-link.active').attr("href") === '#query_gui_view') {
                     table.on('column-visibility.dt', function () {
@@ -275,9 +401,13 @@ $(document).ready(function () {
         }
     });
 
+    $("#download-trig-file").click(function (e) {
+        e.preventDefault();
+        window.location.href = $(this).attr("data-url");
+    });
 
-    $('#file-selector').on("change", function (event) {
-        // event.preventDefault(); // Prevent the default form submission
+    $('#file-selector-rdf-ttl').on("change", function (event) {
+        event.preventDefault(); // Prevent the default form submission
         //getting user select file and [0] this means if user selects multiple files then we'll select only the first one
         file = this.files[0];
         const fileName = file.name;
@@ -285,6 +415,24 @@ $(document).ready(function () {
         const fileType = fileName.split('.').pop();
         uploadData(fileType);
         $('#file-selector').val('');
+    });
+
+    $('#file-selector-trig').on("change", function (event) {
+        event.preventDefault(); // Prevent the default form submission
+        //getting user select file and [0] this means if user selects multiple files then we'll select only the first one
+        file = this.files[0];
+        const fileName = file.name;
+        console.debug("Selected file: " + fileName);
+        const fileType = fileName.split('.').pop();
+        uploadData(fileType);
+        $('#file-selector-trig').val('');
+    });
+
+    $("#webvowl_show_button").click(function (e) {
+        e.preventDefault();
+        $("#webvowl_container").removeClass("d-none");
+        $('#webvowl_iframe').attr('src', $('#webvowl_iframe').attr("data-src"));
+        $("#webvowl_available_container").addClass("d-none");
     });
 
     async function uploadData(fileType) {
@@ -299,34 +447,32 @@ $(document).ready(function () {
 
         const maxSizeInBytes = 100 * 1024 * 1024; // 100MB in bytes
         if (file.size <= maxSizeInBytes) {
+            let fileReader = new FileReader(); //creating new FileReader object
+            fileReader.onload = async (event) => {
+                const url = "/upload";
 
-            let validExtensions = ["rdf", "ttl"]; //adding valid extensions in array
-            if (validExtensions.includes(fileType)) { //if user selected file is a .ttl or .rdf
-                let fileReader = new FileReader(); //creating new FileReader object
-                fileReader.onload = async (event) => {
-                    const url = "/upload";
+                clearInterval(loadingMessageDebug);
 
-                    clearInterval(loadingMessageDebug);
+                // Display "Uploading to server..." message in the console
+                const uploadingMessageDebug = setInterval(() => console.debug('Uploading...'), 1000);
 
-                    // Display "Uploading to server..." message in the console
-                    const uploadingMessageDebug = setInterval(() => console.debug('Uploading...'), 1000);
+                try {
+                    // Create a FormData object and append the file to it
+                    let formData = new FormData();
+                    formData.append('file', file, file.name);
+                    formData.append('namedGraphUpload', $("#named-graph-upload").val());
 
-                    try {
-                        // Create a FormData object and append the file to it
-                        let formData = new FormData();
-                        formData.append('file', file, file.name);
-
-                        const tdbId = $("#tdb_id").text();
-                        const queryParams = {tdb_id: tdbId};
+                    const tdbId = $("#tdb_id").text();
+                    const queryParams = { tdb_id: tdbId };
 
 
-                        const config = {
-                            onUploadProgress: (progressEvent) => {
-                                const {loaded, total} = progressEvent;
-                                percentCompleted = Math.round((loaded * 100) / total);
-                                if (percentCompleted < 100) {
-                                    console.debug(`Upload progress: ${percentCompleted}%`);
-                                    const uploadingMessage = `
+                    const config = {
+                        onUploadProgress: (progressEvent) => {
+                            const { loaded, total } = progressEvent;
+                            percentCompleted = Math.round((loaded * 100) / total);
+                            if (percentCompleted < 100) {
+                                console.debug(`Upload progress: ${percentCompleted}%`);
+                                const uploadingMessage = `
                                             <i class="fa-solid fa-arrow-up-from-bracket"></i>
                                             <span class='ms-1'>Uploading to server...
                                             </span>
@@ -334,110 +480,104 @@ $(document).ready(function () {
                                             <div class='progress-bar' style='width: ${percentCompleted}%'>${percentCompleted}%</div>
                                             </div>
                                             `;
-                                    showFlashMessage("success", uploadingMessage, "html");
-                                } else {
-                                    // Clear the uploading message interval
-                                    clearInterval(uploadingMessageDebug);
-                                    console.debug(`Analyzing the data...`);
-                                    const analyzingMessage = "<span class='spinner-border spinner-border-sm m-1' role='status' aria-hidden='true'></span>Analyze file...";
-                                    showFlashMessage("info", analyzingMessage, "html");
-                                }
-                            },
-                            params: queryParams,
-                            headers: {
-                                'Content-Type': 'multipart/form-data'
+                                showFlashMessage("success", uploadingMessage, "html");
+                            } else {
+                                // Clear the uploading message interval
+                                clearInterval(uploadingMessageDebug);
+                                console.debug(`Analyzing the data...`);
+                                const analyzingMessage = "<span class='spinner-border spinner-border-sm m-1' role='status' aria-hidden='true'></span>Analyze file...";
+                                showFlashMessage("info", analyzingMessage, "html");
                             }
-                        };
+                        },
+                        params: queryParams,
+                        headers: {
+                            'Content-Type': 'multipart/form-data'
+                        }
+                    };
 
 
-                        //using fileReader to upload
-                        const response = await axios.post(url, formData, config);
+                    //using fileReader to upload
+                    const response = await axios.post(url, formData, config);
 
-                        console.debug("Verifying data...")
+                    console.debug("Verifying data...")
 
-                        endTime = new Date();
-                        processTime = (endTime - startTime) / 1000; // Calculate the process time in seconds
+                    endTime = new Date();
+                    processTime = (endTime - startTime) / 1000; // Calculate the process time in seconds
 
-                        const successMessage = `
+                    const successMessage = `
                         <i class="fa-solid fa-circle-check" style="color: rgb(var(--bs-success-rgb));"></i>
                         <span class='ms-1'>Complete in ${processTime} seconds.
                         </span>
                         `;
-                        showFlashMessage("success", successMessage, "html");
+                    showFlashMessage("success", successMessage, "html");
 
-                        console.debug('Successfully finished');
+                    console.debug('Successfully finished');
 
-                        $("#dataset_empty_hint").addClass("d-none");
-                        $("#webvowl_container").removeClass("d-none");
-                        $('#webvowl_iframe').attr( 'src', $('#webvowl_iframe').attr("data-src"));
-                    } catch (error) {
-                        endTime = new Date();
-                        processTime = (endTime - startTime) / 1000; // Calculate the process time in seconds
+                    $("#dataset_empty_hint").addClass("d-none");
+                    $("#webvowl_available_container").removeClass("d-none");
+                } catch (error) {
+                    endTime = new Date();
+                    processTime = (endTime - startTime) / 1000; // Calculate the process time in seconds
 
-                        console.debug("Error:");
-                        console.error(error);
+                    console.debug("Error:");
+                    console.error(error);
 
-                        let parsed_error;
+                    let parsed_error;
 
-                        console.debug("Caused by:");
+                    console.debug("Caused by:");
 
 
-                        if (error?.response?.data == null) {
-                            parsed_error = "Unexpected unknown error"
-                            // const errorMessage = parsed_error;
+                    if (error?.response?.data == null) {
+                        parsed_error = "Unexpected unknown error"
+                        // const errorMessage = parsed_error;
+                        const errorMessage = `
+                            <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-danger-rgb));"></i>
+                            <span class='ms-1'>${parsed_error}
+                            </span>
+                            `;
+                        showFlashMessage("danger", errorMessage, "html");
+                    } else {
+                        parsed_error = error.response.data;
+
+                        console.debug("parsed_error", parsed_error)
+
+                        if (parsed_error === "Query timeout" || parsed_error === "Access forbidden (admin only for now)") {
+                            const errorMessage = `
+                            <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-warning-rgb));"></i>
+                            <span class='ms-1'>${parsed_error}
+                            </span>
+                            `;
+                            showFlashMessage("warning", errorMessage, "html");
+                        } else {
+                            // const errorMessage = "Error:<br>" + parsed_error;
                             const errorMessage = `
                             <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-danger-rgb));"></i>
                             <span class='ms-1'>${parsed_error}
                             </span>
                             `;
+                            console.debug("errorMessage", errorMessage)
                             showFlashMessage("danger", errorMessage, "html");
-                        } else {
-                            parsed_error = error.response.data;
-
-                            console.debug("parsed_error", parsed_error)
-
-                            if (parsed_error === "Query timeout" || parsed_error === "Access forbidden (admin only for now)") {
-                                const errorMessage = `
-                            <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-warning-rgb));"></i>
-                            <span class='ms-1'>${parsed_error}
-                            </span>
-                            `;
-                                showFlashMessage("warning", errorMessage, "html");
-                            } else {
-                                // const errorMessage = "Error:<br>" + parsed_error;
-                                const errorMessage = `
-                            <i class="fa-solid fa-triangle-exclamation" style="color: rgb(var(--bs-danger-rgb));"></i>
-                            <span class='ms-1'>${parsed_error}
-                            </span>
-                            `;
-                                console.debug("errorMessage", errorMessage)
-                                showFlashMessage("danger", errorMessage, "html");
-                            }
                         }
-                        console.error(parsed_error);
-
-
-                    } finally {
-                        console.debug("Process time (total): " + processTime + " seconds");
                     }
-                };
+                    console.error(parsed_error);
 
 
-                fileReader.readAsDataURL(file);
-
-                // Display "Loading file..." message in the console
-                const loadingMessageDebug = setInterval(() => console.debug('Loading file...'), 1000);
-
-                const loadingMessage = "<span class='spinner-border spinner-border-sm m-1' role='status' aria-hidden='true'></span>Loading file...";
-                showFlashMessage("success", loadingMessage, "html");
+                } finally {
+                    console.debug("Process time (total): " + processTime + " seconds");
+                }
+            };
 
 
-            } else {
-                showToastMessage('warning', 'Oops, you can only upload files in Turtle (.ttl), RDF (.rdf) format.')
-            }
+            fileReader.readAsDataURL(file);
+
+            // Display "Loading file..." message in the console
+            const loadingMessageDebug = setInterval(() => console.debug('Loading file...'), 1000);
+
+            const loadingMessage = "<span class='spinner-border spinner-border-sm m-1' role='status' aria-hidden='true'></span>Loading file...";
+            showFlashMessage("success", loadingMessage, "html");
         } else {
             const upload_filesize = file.size / 1024 / 1024;
-            showToastMessage('warning', `Upload filesize: ${Math.trunc(upload_filesize)}MB too large (limit < ${maxSizeInBytes / 1024 / 1024}MB)`)
+            showFlashMessage('warning', `Upload filesize: ${Math.trunc(upload_filesize)}MB too large (limit < ${maxSizeInBytes / 1024 / 1024}MB)`, 'html')
         }
     }
 
@@ -447,11 +587,9 @@ function clearOptions() {
     $("#xaxis").empty();
     $("#yaxis").empty();
     $("#propertyMenu").empty();
-    $("#glassIdMenu").empty();
     $("#xaxis").parent().hide();
     $("#yaxis").parent().hide();
     $("#propertyMenu").parent().hide();
-    $("#glassIdMenu").parent().hide();
     $("#oxideList").parent().hide();
 }
 
@@ -466,6 +604,8 @@ function createTable(data, mapped_head, tdbId) {
 
     let tooltip = false;
 
+    console.debug(data)
+    console.debug(mapped_head)
 
     return $('#table_query')
         .DataTable({
@@ -503,19 +643,19 @@ function createTable(data, mapped_head, tdbId) {
                         extend: 'spacer',
                         style: 'mx-1',
                     },
-                    {
-                        className: 'btn btn-outline-secondary rounded-start rounded-end',
-                        extend: 'copyHtml5',
-                        exportOptions: {
-                            columns: [0, ':visible']
-                        },
-                        text: '<i class="fi fi-rr-duplicate align-middle"></i><span class="ms-1">Copy</span>',
-                        title: '',
-                    },
-                    {
-                        extend: 'spacer',
-                        style: 'mx-1',
-                    },
+                    // {
+                    //     className: 'btn btn-outline-secondary rounded-start rounded-end',
+                    //     extend: 'copyHtml5',
+                    //     exportOptions: {
+                    //         columns: [0, ':visible']
+                    //     },
+                    //     text: '<i class="fi fi-rr-duplicate align-middle"></i><span class="ms-1">Copy</span>',
+                    //     title: '',
+                    // },
+                    // {
+                    //     extend: 'spacer',
+                    //     style: 'mx-1',
+                    // },
                     {
                         className: 'btn btn-outline-secondary rounded-start rounded-end',
                         extend: 'collection',
@@ -555,12 +695,11 @@ function createTable(data, mapped_head, tdbId) {
             fixedColumns: {
                 left: fixedColNum,
             },
-            responsive: true,
+            responsive: false,
             autoWidth: false,
             select: true,
             "data": data,
             "columns": mapped_head,
-
             "initComplete": function () {
                 $('#table_query_wrapper .dropdown-toggle').removeClass('dropdown-toggle') // hide default dropdown-toggle arrow icon
 
@@ -677,6 +816,6 @@ function createTable(data, mapped_head, tdbId) {
             }
         });
 
-    
+
 }
 

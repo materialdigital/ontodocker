@@ -16,7 +16,7 @@ pyparsing==2.4.7 #https://github.com/httplib2/httplib2/issues/207
 httplib2<0.20 #https://github.com/httplib2/httplib2/issues/207
 pymantic
 authlib
-
+rdflib
 httpx
 jinja2
 python-multipart

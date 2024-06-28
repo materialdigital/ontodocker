@@ -33,16 +33,23 @@ function CopyToClipboard(id) {
 }
 /* end of Copy to clipboard*/
 
-
 /* Flash message */
-function showFlashMessage(type, message, message_type, containerElement) {
+function showFlashMessage(type, message, message_type, containerElement, small) {
 
     if(typeof containerElement === 'undefined') {
         containerElement = $("#flash-message-axios")
     }
 
+    if(typeof small === 'undefined') {
+        small = false
+    }
+    smallCls = ""
+    if(small) {
+        smallCls = "p-1"
+    }
+
     const flashMessage = $("<div>", {
-        class: `alert alert-${type} mb-0`, // .mb-0 to remove bottom margin
+        class: `alert alert-${type} ${smallCls} mb-0`, // .mb-0 to remove bottom margin
         role: "alert",
     });
     if (message_type === "html") {
@@ -180,21 +187,12 @@ $('.nav-tabs a').on('shown.bs.tab', function (event) {
     if (targetTab === "#sparql_code_view") {
         if (yasgui && yasgui.getTab()) {
             yasgui.getTab().yasqe.refresh();
-            showCopyCodeButton(true);
             showUpdateButton(true);
         }
     } else {
-        showCopyCodeButton(false);
         showUpdateButton(false);
     }
 });
-
-function showCopyCodeButton(show) {
-    const copyCodeButton = document.getElementById("copy_code");
-    if (copyCodeButton !== null) {
-        copyCodeButton.style.display = show ? "block" : "none";
-    }
-}
 
 function showUpdateButton(show) {
     const updateButton = document.getElementById("updateButton");
@@ -204,35 +202,35 @@ function showUpdateButton(show) {
 }
 
 // Function to monitor button clicks and handle tab count and the showCopyCodeButton function
-function monitorYasguiTabClicks() {
-    const tabsList = document.querySelector('.yasgui .tabsList');
+// function monitorYasguiTabClicks() {
+//     const tabsList = document.querySelector('.yasgui .tabsList');
 
-    if (tabsList) {
-        tabsList.addEventListener('click', function (event) {
-            const target = event.target;
+//     if (tabsList) {
+//         tabsList.addEventListener('click', function (event) {
+//             const target = event.target;
 
-            // Check if the clicked element is the add or close button
-            const isAddButton = target.classList.contains('addTab');
-            const isCloseButton = target.classList.contains('closeTab');
+//             // Check if the clicked element is the add or close button
+//             const isAddButton = target.classList.contains('addTab');
+//             const isCloseButton = target.classList.contains('closeTab');
 
-            if (isAddButton || isCloseButton) {
-                // Update the tab count based on button clicks
-                const numberOfTabs = document.querySelectorAll('.yasgui .tabsList .tab').length;
+//             if (isAddButton || isCloseButton) {
+//                 // Update the tab count based on button clicks
+//                 const numberOfTabs = document.querySelectorAll('.yasgui .tabsList .tab').length;
 
-                // Run the function to show/hide the copy code button based on the tab count
-                if (numberOfTabs > 0) {
-                    showCopyCodeButton(true); // Show the copy code button
-                } else {
-                    showCopyCodeButton(false); // Hide the copy code button
-                }
-            }
-        });
-    } else {
-        showCopyCodeButton(false); // Hide the copy code button
-    }
-}
+//                 // Run the function to show/hide the copy code button based on the tab count
+//                 if (numberOfTabs > 0) {
+//                     showCopyCodeButton(true); // Show the copy code button
+//                 } else {
+//                     showCopyCodeButton(false); // Hide the copy code button
+//                 }
+//             }
+//         });
+//     } else {
+//         showCopyCodeButton(false); // Hide the copy code button
+//     }
+// }
 
-monitorYasguiTabClicks()
+// monitorYasguiTabClicks()
 /* end of Yasgui tab event */
 
 

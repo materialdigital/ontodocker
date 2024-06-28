@@ -12,7 +12,7 @@ import requests
 from fastapi.responses import JSONResponse
 
 from pydantic import BaseSettings
-from .misc import upload_onto
+from .misc import upload_onto_str
 
 sys.path.append("..")  # Adds higher directory to python modules path.
 from config import FusekiSettings, get_fuseki_settings
@@ -79,23 +79,40 @@ class FusekiConnection():
     async def update(self, update_query, client):
         return await client.post(self.upserver, data={"update": update_query}, headers=FusekiConnection._header)
 
-    async def upload(self, path_to_onto, client):
+    async def upload(self, path_to_onto, named_graph, client):
         print(f"\n####\n{path_to_onto = }\n####\n")
-        return await upload_onto(f'{self.endpoint}/data', path_to_onto, client, headers=FusekiConnection._header)
+        
+        file_type = os.path.basename(path_to_onto).rsplit('.', 1)[1].lower()
+    
+        with open(path_to_onto, 'rb') as file:
+            data = file.read()
 
-    async def is_empty(self, client):
-        #todo is_empty
-        query ="SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 2"
-        return await client.post(self.server, params={"query": query}, headers=FusekiConnection._header)
-        r = await self.query(query, client)
+        url = f'{self.endpoint}/data?graph={named_graph}'
+        if file_type.lower() == "trig":
+            # Trig Files contain graph information inside, so no specification in URI
+            url = f'{self.endpoint}/data'
+            
+        return await upload_onto_str(url, data, client, FusekiConnection._header, file_type)
+        
+    async def get_namedgraphs(self, client):
+        query = "SELECT ?g WHERE { GRAPH ?g { } }"
+        r = await client.post(self.server, params={"query": query}, headers=FusekiConnection._header)
+        head, data, raw = extract_queryresults(r)
+        if data is None or len(data) == 0:
+            return None
+        return [named_graph[0] for named_graph in data]
+    
+    async def data(self, client):
+        url = f'{self.endpoint}/data'
+        r = await client.get(url, headers=FusekiConnection._header)
         return r
-        head, data = extract_queryresults(r.json())
-
-        #data = {"head": [{"title": column} for column in head], "data": data}
-        return not bool(data)
+    
+    async def upload_data(self, onto_str, client, data_type = "trig"):
+        url = f'{self.endpoint}/data'
+        return await upload_onto_str(url, onto_str, client, FusekiConnection._header, data_type)
 
     async def get_vowl(self, client):
-        url = f'{self.endpoint}/data'
+        url = f'{self.endpoint}/data?default'
         r = await client.get(url, headers=FusekiConnection._header)
         # get graph
         to_convert = f"{var_dir}jena_all.rdf"

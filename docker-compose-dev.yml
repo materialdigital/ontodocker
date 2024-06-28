@@ -18,7 +18,7 @@ services:
       #- default
     ports:
       - "8000:${ONTODOCKER_RUN_PORT}"
-      # - 5678:5678
+      - 5678:5678
 #    restart: on-failure
 
   fuseki:

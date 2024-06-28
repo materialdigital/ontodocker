@@ -41,8 +41,7 @@ def login(request: Request, settings: Annotated[Settings, Depends(get_settings)]
     if not user:
         user = User(name=name,
                     email=email,
-                    role=role,
-                    # api_key=create_ontodocker_apikey(sub, name, email, role, request, settings)
+                    role=role
                     )
         db_session.add(user)
         db_session.commit()
@@ -66,6 +65,7 @@ def login(request: Request, settings: Annotated[Settings, Depends(get_settings)]
             db_session.refresh(user)
             print("Updated user:", user)
 
+    request.session["id"] = user.id
     request.session["email"] = user.email
     request.session["name"] = user.name
     request.session["role"] = user.role

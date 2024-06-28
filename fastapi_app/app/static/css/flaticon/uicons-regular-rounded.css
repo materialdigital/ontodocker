@@ -1,8 +1,8 @@
 @font-face {
 font-family: "uicons-regular-rounded";
-src: url("https://cdn-uicons.flaticon.com/uicons-regular-rounded/webfonts/uicons-regular-rounded.eot#iefix") format("embedded-opentype"),
-url("https://cdn-uicons.flaticon.com/uicons-regular-rounded/webfonts/uicons-regular-rounded.woff2") format("woff2"),
-url("https://cdn-uicons.flaticon.com/uicons-regular-rounded/webfonts/uicons-regular-rounded.woff") format("woff");
+src: url("../webfonts/uicons/uicons-regular-rounded.eot#iefix") format("embedded-opentype"),
+url("../webfonts/uicons/uicons-regular-rounded.woff2") format("woff2"),
+url("../webfonts/uicons/uicons-regular-rounded.woff") format("woff");
 }
 
     i[class^="fi-rr-"]:before, i[class*=" fi-rr-"]:before, span[class^="fi-rr-"]:before, span[class*="fi-rr-"]:before {

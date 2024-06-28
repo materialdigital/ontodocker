@@ -43,6 +43,15 @@
                     <span id="tdb_id">{{ tdb_id }}</span>
                 </h4>
             </div>
+            <div class="col-auto">
+                <label class="btn btn-outline-primary" for="download-trig-file" data-bs-custom-class="custom-tooltip"
+                    data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download as Trig File">
+                    <input id="download-trig-file" data-url="{{ownurl}}/jena/{{tdb_id}}/download" type="button"
+                        style="display:none">
+                    <i class="fa-solid fa-download"></i>
+                    <span class="ms-1">Download dataset as Trig</span>
+                </label>
+            </div>
             {% if isAdminRole or isReadWriteRole %}
             <div class="col-auto">
                 <form action="/jena/{{ tdb_id }}/clear_cache" method="GET" id="clear_dataset_cache"
@@ -78,12 +87,12 @@
 
 
 {% if tdb_id %}
-<!-- Endpoints -->
+<!-- API Endpoints -->
 <div class="container-fluid px-4 mb-4">
     <div class="card mb-4">
         <div class="card-header">
             <i class="fa-solid fa-server me-1"></i>
-            Endpoints
+            API Endpoints
         </div>
         <div class="card-body">
             <div class="row g-2 align-items-center column-gap-4">
@@ -122,6 +131,42 @@
     </div>
 </div>
 
+<!-- Named Graph Datatable with Columns IRI, Label and Create Query Button which adds a query tab to the YasGUI
+where the columns IRI and Label are searchable 
+-->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-table me-1"></i>
+            Named Graphs
+        </div>
+        <div class="card-body">
+            <table id="named_graphs" class="table order-column table-bordered table-hover nowrap">
+                <thead>
+                    <tr>
+                        <th>IRI</th>
+                        <th style="width:40px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for graph in named_graphs %}
+                    <tr>
+                        <td>{{ graph.iri }}</td>
+                        <td style="width:40px">
+                            <button type="button" class="btn btn-primary-outline" data-bs-custom-class="custom-tooltip"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Create query"
+                                onclick="createQueryOfNamedGraph('{{ graph.iri }}')">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- Query Field -->
 <div class="container-fluid px-4 mb-4">
     <div class="card mb-4">
@@ -139,12 +184,58 @@
                     </ul>
                 </div>
                 <div class="col col-md-auto">
-                    <button type="button" class="btn btn-primary-outline copy-button py-0" id="copy_code"
-                         data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
-                        data-bs-placement="left"
+                    <div id="savedQueryMsgContainer" style="float:left"></div>
+                    <div class="row pe-3" id="saveQueryContainer" style="float:left; display:none;">
+                        <div class="col float-end">
+                            <span style="float:left" class="mt-2 me-3">Query Name:</span>
+                            <input type="text" id="queryName" style="width:300px; float:left;" class="mt-1">
+                            <div class="form-check form-switch ms-2 mt-2" style="float:left;">
+                                <label class="form-check-label" for="publicToggle">Public</label>
+                                <input class="form-check-input" type="checkbox" id="publicToggle">
+                            </div>
+                            <button type="button" id="saveQueryConfirmBtn" class="btn btn-primary-outline"
+                                style="float:left;" data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                                data-bs-placement="bottom" title="Save query">
+                                <i class="fa-solid fa-floppy-disk"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary-outline action-button" style="" id="load_query_btn"
+                        data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        title="Load query">
+                        <i class="fa-regular fa-folder"></i>
+                    </button>
+                    <select id="query_select" class="action-loading-elem" style="width:300px; display:none;">
+                    </select>
+                    <button type="button" id="loadSelectedQueryBtn" class="btn btn-primary-outline action-loading-elem"
+                        style="display:none; " data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                        data-bs-placement="bottom" title="Load selected query">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                    <button type="button" id="deleteQueryBtn" class="btn btn-primary-outline action-loading-elem"
+                        style="display:none; " data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                        data-bs-placement="bottom" title="Delete selected query">
+                        <i class="fa-solid fa-trash text-danger"></i>
+                    </button>
+                    {% if isAdminRole or isReadWriteRole %}
+                    <button type="button" class="btn btn-primary-outline action-button action-save-copy-button"
+                        id="save_query_btn" data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                        data-bs-placement="bottom" title="Save the query">
+                        <i class="fa-regular fa-floppy-disk"></i>
+                    </button>
+                    {% endif %}
+                    <button type="button"
+                        class="btn btn-primary-outline action-button action-save-copy-button copy-button py-0"
+                        id="copy_code" title="Copy to clipboard" data-bs-custom-class="custom-tooltip"
+                        data-bs-toggle="tooltip" data-bs-placement="bottom"
                         onclick="navigator.clipboard.writeText(yasgui.getTab().yasqe.getValue());"><!--color: #6c757d;-->
                         <!--HTTPS only-->
                         <i class="fa-regular fa-copy fa-fw"></i>
+                    </button>
+                    <button type="button" id="cancelBtn" class="btn btn-primary-outline" style="display:none; "
+                        data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        title="Cancel">
+                        <i class="fa-solid fa-times"></i>
                     </button>
                 </div>
             </div>
@@ -177,21 +268,46 @@
                 {% if isAdminRole or isReadWriteRole %}
                 <button type="submit" form="qform" name="update" id="updateButton" class="btn btn-outline-secondary"
                     data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
-                    title="Update partial data" style="display:none">
-                    <i class="fa-solid fa-arrows-rotate"></i>
-                    <span class="ms-1">Update</span>
+                    title="Update partial data">
+                    <i class="fa-solid fa-play"></i>
+                    <span class="ms-1">Insert / Update</span>
+                    <i class="fa-solid fa-arrow-up"></i>
                 </button>
-                <form class=btn-group method="POST" enctype="multipart/form-data">
-                    <label class="btn btn-outline-secondary" for="file-selector" data-bs-custom-class="custom-tooltip"
-                        data-bs-toggle="tooltip" data-bs-placement="bottom"
-                        title="Upload Turtle (.ttl) or RDF (.rdf) files">
-                        <input id="file-selector" type="file" style="display:none" name="file">
-                        <i class="fa-solid fa-arrow-up-from-bracket"></i>
-                        <span class="ms-1">Upload</span>
-                    </label>
-                </form>
                 {% endif %}
             </div>
+            {% if isAdminRole or isReadWriteRole %}
+            <div class="float-end">
+                <div class="float-end">
+                    <form class=btn-group method="POST" enctype="multipart/form-data">
+                        <label class="btn btn-outline-secondary" for="file-selector-trig"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                            title="Upload Trig Files (.trig)">
+                            <input id="file-selector-trig" type="file" accept=".trig" style="display:none" name="file">
+                            <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                            <span class="ms-1">Upload Trig</span>
+                        </label>
+                    </form>
+                </div>
+                <br /><br />
+                <form class=btn-group method="POST" enctype="multipart/form-data">
+                    <label class="btn btn-outline-secondary" for="file-selector-rdf-ttl"
+                        data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        title="Upload Turtle (.ttl) or RDF (.rdf) files">
+                        <input id="named-graph-upload" class="me-3" style="width:350px" type="input"
+                            name="named-graph-upload" placeholder="Graph Name (empty = default)" list="graph-list">
+                        <datalist id="graph-list">
+                            {% for graph in named_graphs %}
+                            <option value="{{ graph.iri }}"></option>
+                            {% endfor %}
+                        </datalist>
+                        <input id="file-selector-rdf-ttl" type="file" accept=".ttl,.rdf" style="display:none"
+                            name="file">
+                        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                        <span class="ms-1">Upload RDF/TTL</span>
+                    </label>
+                </form>
+            </div>
+            {% endif %}
             <div class="row g-2 align-items-center">
                 <div class="mt-4" id="flash-message-axios" style="font-size: 1.15rem"></div>
             </div>
@@ -206,6 +322,22 @@
             Result Table
         </div>
         <div class="card-body">
+            <!-- If present then the raw data is displayed in a textarea and can be copy pasted with a button-->
+            <div class="row g-2 align-items-center" id="raw_data_container">
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <textarea class="form-control" id="raw_data" style="height:100px;" readonly></textarea>
+                            <label for="raw_data">Raw Data</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="" onclick="CopyToClipboard('raw_data')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
             <table id="table_query" class="table order-column table-bordered table-hover nowrap">
             </table>
         </div>
@@ -215,14 +347,27 @@
 
 
 <!-- WebVOWL -->
-<div class="container-fluid px-4 mb-4 {% if ds_isempty %}d-none{% endif %}" id="webvowl_container">
+<div class="container-fluid px-4 mb-4 {% if ds_isempty %}d-none{% endif %}" id="webvowl_available_container">
+    <div class="card mb-4">
+        <div class="card-body">
+            <button type="button" class="btn btn-outline-secondary" id="webvowl_show_button"
+                data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                title="Visualize the dataset">
+                <i class="fa-solid fa-eye"></i>
+                <span class="ms-1">Visualize with WebVOWL</span>
+            </button>
+        </div>
+    </div>
+</div>
+<div class="container-fluid px-4 mb-4 d-none" id="webvowl_container">
     <div class="card mb-4">
         <div class="card-body">
             <div class="row g-2 align-items-center column-gap-4">
                 <div class="input-group mb-3">
                     <div class="form-floating">
-                        <iframe style="height:700px;width:100%;" id="webvowl_iframe" src="{% if not ds_isempty %}{{ url_for('static', path='vowl/index.html' ) }}{% endif %}" data-src="{{ url_for('static', path='vowl/index.html' ) }}"
-                            frameborder="0"></iframe>
+                        <iframe style="height:700px;width:100%;" id="webvowl_iframe"
+                            src="{% if not ds_isempty %}{{ url_for('static', path='vowl/index.html' ) }}{% endif %}"
+                            data-src="{{ url_for('static', path='vowl/index.html' ) }}" frameborder="0"></iframe>
                     </div>
                 </div>
             </div>
@@ -244,58 +389,8 @@
 {% endblock %}
 
 {% block script %}
-<!--default fontsize is small, can be changed using style .treejs at top to fix-->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/treejs/1.8.3/tree.min.js"
-    integrity="sha512-ia0SBL/FE7YbHU5Wn4Qxzm12zOgNZ7FOp76oGgi/+34G8KLo9Fa9f9tzGC9injQs75EjxaHq9a7iSoup8k8BAA=="
-    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<!--<script src="../static/js/property.min.js"></script>-->
-<script>
-        (() => {
-            const script = document.createElement("script");
-            script.src = "../static/js/property.min.js?=" + new Date().getTime();
-            document.body.appendChild(script);
-        })();
-</script>
-
-
-<!--oxide checkbox listener-->
-
-<script>
-    (() => {
-        const script = document.createElement("script");
-        script.src = "../static/js/oxide.min.js?=" + new Date().getTime();
-        document.body.appendChild(script);
-    })();
-</script>
-
-<!--<script src="../static/js/sparql.min.js?v=1"></script>-->
-<script>
-    (() => {
-        const script = document.createElement("script");
-        script.src = "../static/js/sparql.min.js?=" + new Date().getTime();
-        document.body.appendChild(script);
-    })();
-</script>
-
-<script>
-    (() => {
-        const script = document.createElement("script");
-        script.src = "../static/js/glass_mapping.min.js?=" + new Date().getTime();
-        document.body.appendChild(script);
-    })();
-</script>
-
-<!--<script src="../static/js/plot.min.js?v=1"></script>-->
-<script>
-    (() => {
-        const script = document.createElement("script");
-        script.src = "../static/js/plot.min.js?=" + new Date().getTime();
-        document.body.appendChild(script);
-    })();
-</script>
-
-<script src="https://unpkg.com/@triply/yasgui@4.2.28/build/yasgui.min.js"></script>
+<script src="../static/js/yasgui.4.2.28.min.js"></script>
 
 <script>
     // see https://triply.cc/docs/yasgui-api/

@@ -25,7 +25,7 @@ oidc = OpenIDConnect(keycloak_setting.host, keycloak_setting.realm, keycloak_set
                      keycloak_setting.client_id, keycloak_setting.client_secret,
                      keycloak_setting.scope, keycloak_setting.verify)
 
-security = HTTPBearer(
+security = HTTPBearer(auto_error=False,
     description="Enter the API key (you will find it on the <a target='_blank' href='/'>Homepage</a> after login)")
 
 allow_unauthorized_readonly_api_access = os.environ.get("ALLOW_UNAUTHORIZED_READONLY_API_ACCESS", "False").lower() == "true"
@@ -54,21 +54,14 @@ def decode_token(token: str):
     # print(f"\n####\n{decoded_jwt = }\n####\n")
     return decoded_jwt
 
-async def get_optional_token(request: Request) -> Optional[str]:
-    if "Authorization" in request.headers:
-        auth = request.headers["Authorization"]
-        if auth.startswith("Bearer "):
-            return auth[len("Bearer "):]
-    return None
-
 async def verify_readonly(request: Request, 
                           settings: Annotated[Settings, Depends(get_settings)], 
-                          token: Optional[str] = Depends(get_optional_token)):
+                          security_bearer: Optional[str] = Depends(security)):
     if allow_unauthorized_readonly_api_access:
         return True
-    if not token:
+    if not security_bearer or not security_bearer.credentials:
         raise HTTPException(status_code=401, detail=f"No token offered.")
-    print(f"\n####\n{token = }\n####\n")
+    token = security_bearer.credentials
     try:
         decoded_jwt = jwt.decode(token, get_settings().JWT_SECRET_KEY, audience="ontodocker",
                                  algorithms=["HS256"],
@@ -81,10 +74,10 @@ async def verify_readonly(request: Request,
     
 async def verify_readwrite(request: Request, 
                            settings: Annotated[Settings, Depends(get_settings)], 
-                           token: Optional[str] = Depends(get_optional_token)):
-    if not token:
+                           security_bearer: Optional[str] = Depends(security)):
+    if not security_bearer or not security_bearer.credentials:
         raise HTTPException(status_code=401, detail=f"No token offered.")
-    print(f"\n####\n{token = }\n####\n")
+    token = security_bearer.credentials
     try:
         decoded_jwt = jwt.decode(token, get_settings().JWT_SECRET_KEY, audience="ontodocker",
                                  algorithms=["HS256"],
@@ -97,10 +90,10 @@ async def verify_readwrite(request: Request,
     
 async def verify_admin(request: Request, 
                        settings: Annotated[Settings, Depends(get_settings)], 
-                       token: Optional[str] = Depends(get_optional_token)):
-    if not token:
+                       security_bearer: Optional[str] = Depends(security)):
+    if not security_bearer or not security_bearer.credentials:
         raise HTTPException(status_code=401, detail=f"No token offered.")
-    print(f"\n####\n{token = }\n####\n")
+    token = security_bearer.credentials
     try:
         decoded_jwt = jwt.decode(token, get_settings().JWT_SECRET_KEY, audience="ontodocker",
                                  algorithms=["HS256"],
