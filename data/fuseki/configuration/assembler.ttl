@@ -18,7 +18,7 @@
     fuseki:serviceUpdate     "update" ;    # SPARQL update service
     fuseki:serviceUpload     "upload" ;    # Non-SPARQL upload service
     fuseki:serviceReadWriteGraphStore "data" ;     # SPARQL Graph store protocol
-    # ###################################################################################################################fuseki:serviceReadGraphStore    "data" ;     # SPARQL Graph store protocol (read only)
+    # #####################################################################################################################################################fuseki:serviceReadGraphStore    "data" ;     # SPARQL Graph store protocol (read only)
     fuseki:dataset           <#text> ;
 #    fuseki:dataset           <#tdb> ;
     .

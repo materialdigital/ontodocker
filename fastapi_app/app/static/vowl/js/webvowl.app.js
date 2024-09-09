@@ -8223,7 +8223,11 @@ webvowl.app =
 	  var showLoadingDetails = false;
 	  var visibilityStatus = true;
 	  
-	  var DEFAULT_JSON_NAME = "data"; // This file is loaded by default
+	  // Extract of GET Parameter with key "tdb_id"
+	  const searchParams = new URLSearchParams(window.location.search);
+	  const tdb_id = searchParams.get("tdb_id");
+
+	  var DEFAULT_JSON_NAME = tdb_id; // This file is loaded by default
 	  var conversion_sessionId;
 	  
 	  /** variable defs **/
@@ -8729,7 +8733,6 @@ webvowl.app =
 	      
 	    } else {
 	      // read the file name
-	      
 	      var fileToRead = "./data/" + ontology + ".json";
 	      if ( f2r ) {
 	        fileToRead = f2r;

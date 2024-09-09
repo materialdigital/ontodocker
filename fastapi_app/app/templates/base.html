@@ -67,13 +67,19 @@
                 <a class="nav-link dropdown-toggle d-md-none" id="navbarDropdown" href="#" role="button"
                     data-bs-toggle="dropdown" aria-expanded="false"><i class="fa-solid fa-user"></i>
                 </a>
-                <a class="nav-link {% if role is defined and role[0] is defined %}dropdown-toggle{% else %}pe-none{% endif %} d-none d-md-block"
+                <a class="nav-link {% if role is defined and role[0] is defined and name != 'anonymous' %}dropdown-toggle{% else %}pe-none{% endif %} d-none d-md-block"
                     id="navbarDropdown2" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"><i
                         class="fa-solid fa-user"></i><span class="m-1 fw-semibold">{{ name }}{% if role is defined and
-                        role[0] is defined %} ({{ email }}){% endif %}</span>
+                        role[0] is defined and name != "anonymous" %} | {{ user_identifier }} ({{ provider }}){% endif %}</span>
                 </a>
-                {% if role is defined and role[0] is defined %}
+                {% if role is defined and role[0] is defined and name != "anonymous" %}
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                    {% if provider == 'Local' %}
+                    <button class="dropdown-item" id="password_change_button" type="button"
+                        onclick="$('#passwordChangeModal').modal('toggle')"><i class="fa-solid fa-key fa-fw"></i>
+                        Change password
+                    </button>
+                    {% endif %}
                     <button class="dropdown-item" id="api_key_button" type="button"
                         onclick="$('#apiKeyModal').modal('toggle')"><i class="fa-solid fa-key fa-fw"></i>
                         API Key
@@ -90,7 +96,7 @@
                 </ul>
                 {% endif %}
             </li>
-            {% if role is not defined or role[0] is not defined %}
+            {% if role is not defined or role[0] is not defined or name == "anonymous" %}
             <li class="nav-item">
                 <a href="/login" class="nav-link ">Login</a>
             </li>
@@ -149,9 +155,17 @@
                             </a>
                             <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
                                 <nav class="sb-sidenav-menu-nested nav">
+                                    <a class="nav-link {{'active' if request.path == '/admin/users'}}" href="/admin/users">
+                                        <div class="sb-nav-link-icon"><i class="fa-solid fa-user-group fa-fw"></i></div>
+                                        User Management
+                                    </a>
+                                </nav>
+                            </div>
+                            <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
+                                <nav class="sb-sidenav-menu-nested nav">
                                     <a class="nav-link {{'active' if request.path == '/admin/backup'}}" href="/admin/backup">
                                         <div class="sb-nav-link-icon"><i class="fa-solid fa-file-zipper fa-fw"></i></div>
-                                        Backup / Restore
+                                        Export / Import
                                     </a>
                                 </nav>
                             </div>
@@ -224,7 +238,7 @@
                     {% if isAdminRole %}
                     Administrator
                     {% elif isReadWriteRole %}
-                    Maintainer
+                    Read/Write
                     {% elif isReadOnlyRole %}
                     Read-Only
                     {% endif %}
@@ -247,7 +261,7 @@
                             </div>
                             <div class="modal-body">
                                 <div class="input-group mb-3">
-                                    <input type="password" class="form-control form-control-lg" readonly
+                                    <input type="text" class="form-control form-control-lg" readonly
                                         value="{{ api_key }}" id="api_key" />
                                     <button type="button"
                                         class="btn btn-primary-outline copy-button border border-start-0"
@@ -274,6 +288,44 @@
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-dismiss="modal"
                                     onclick="$('#apiKeyModal').modal('toggle')">Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Password Change Modal -->
+                <div class="modal fade" id="passwordChangeModal" tabindex="-1" role="dialog" aria-labelledby="passwordChangeModalLabel"
+                    aria-hidden="true">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="passwordChangeModalLabel">Change password</h5>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label for="old_password">Current password</label>
+                                    <input type="password" class="form-control form-control-lg" id="old_password" />
+                                </div>
+                                <div class="form-group mt-2">
+                                    <label for="new_password1">New password</label>
+                                    <input type="password" class="form-control form-control-lg" id="new_password1" />
+                                </div>
+                                <div class="form-group mt-2">
+                                    <label for="new_password2">New password confirmation</label>
+                                    <input type="password" class="form-control form-control-lg" id="new_password2" />
+                                </div>
+                                <hr>
+                                <button type="button" class="btn btn-primary border border-start-0" title=""
+                                    id="password_change_submit" data-bs-custom-class="custom-tooltip"
+                                    data-bs-toggle="tooltip" data-bs-placement="right">
+                                    <i class="fas fa-save"></i> Change Password
+                                </button>
+                                <div class="mt-2" id="returnPasswordChangeMessageContainer"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal"
+                                    onclick="$('#passwordChangeModal').modal('toggle')">Close
                                 </button>
                             </div>
                         </div>

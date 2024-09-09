@@ -306,6 +306,10 @@ triggerHideTooltip();
 const copyButtons = [].slice.call(document.querySelectorAll('.copy-button'));
 
 copyButtons.forEach(function (button) {
+    // If http connection hide button
+    if (navigator.clipboard === undefined) {
+        button.style.display = 'none';
+    }
     button.addEventListener('click', function () {
 
         // Update the title to 'Copied'

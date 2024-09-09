@@ -217,7 +217,7 @@ where the columns IRI and Label are searchable
                         data-bs-placement="bottom" title="Delete selected query">
                         <i class="fa-solid fa-trash text-danger"></i>
                     </button>
-                    {% if isAdminRole or isReadWriteRole %}
+                    {% if (isAdminRole or isReadWriteRole) and user_identifier %}
                     <button type="button" class="btn btn-primary-outline action-button action-save-copy-button"
                         id="save_query_btn" data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
                         data-bs-placement="bottom" title="Save the query">
@@ -351,6 +351,7 @@ where the columns IRI and Label are searchable
     <div class="card mb-4">
         <div class="card-body">
             <button type="button" class="btn btn-outline-secondary" id="webvowl_show_button"
+                data-tdb-id="{{ tdb_id }}"
                 data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
                 title="Visualize the dataset">
                 <i class="fa-solid fa-eye"></i>
@@ -366,8 +367,7 @@ where the columns IRI and Label are searchable
                 <div class="input-group mb-3">
                     <div class="form-floating">
                         <iframe style="height:700px;width:100%;" id="webvowl_iframe"
-                            src="{% if not ds_isempty %}{{ url_for('static', path='vowl/index.html' ) }}{% endif %}"
-                            data-src="{{ url_for('static', path='vowl/index.html' ) }}" frameborder="0"></iframe>
+                            data-src="{{ url_for('static', path='vowl/index.html?tdb_id='+tdb_id ) }}" frameborder="0"></iframe>
                     </div>
                 </div>
             </div>

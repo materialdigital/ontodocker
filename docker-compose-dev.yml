@@ -17,7 +17,7 @@ services:
       - testo
       #- default
     ports:
-      - "8000:${ONTODOCKER_RUN_PORT}"
+      - "${ONTODOCKER_RUN_PORT}:8000"
       - 5678:5678
 #    restart: on-failure
 

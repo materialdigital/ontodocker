@@ -1,19 +1,17 @@
 import json
 import os
+import gzip
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Query, UploadFile, File, Depends, Path
+from fastapi import APIRouter, UploadFile, File, Depends, Path, Response
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
-from pydantic import create_model, BaseModel
 from fastapi import Response as ResponseFastApi
 import requests
-#from .auth import create_keycloak_apikey
 
 from triplestore.jena import get_jenaconn, FusekiConnection
-from dependencies import check_auth, get_client, verify_readonly, verify_readwrite, verify_admin
-from config import get_settings, get_keycloak_settings, Settings
+from dependencies import get_client, verify_readonly, verify_readwrite
 from fastapi_jwt_auth import AuthJWT
 #from fastapi_jwt_auth.exceptions import AuthJWTException
 
@@ -376,8 +374,7 @@ async def sparql_jena(request: Request,
     if allowed:
         url = f"http://fuseki:3030/{dataset_name}/sparql"
         resp = requests.get(url, headers=request.headers, params={"query":request.query_params["query"]}, auth=(os.environ.get("FUSEKI_ADMIN_USER", ""), os.environ.get("FUSEKI_ADMIN_PW", "")))
-        headers = {name : value for (name, value) in resp.raw.headers.items()}
-        return JSONResponse(content=resp.json(), status_code=200, headers=headers)
+        return JSONResponse(content=resp.json(), status_code=200)
     return JSONResponse(content=str("Minimum readonly API-Key required"), status_code=403)
 
 @router.post("/jena/{dataset_name}/sparql",

@@ -7,6 +7,9 @@ from typing import Annotated
 from config import get_settings, Settings
 from typing import Optional
 import datetime
+import zoneinfo
+import bcrypt
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status, Form, Query, UploadFile, File
 from fastapi.encoders import jsonable_encoder
@@ -19,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from sqlmodel import Session
-from db import User, filter_users, SparqlQuery, find_all_sparql_query, find_sparql_query_by_user_id_or_public, find_sparql_query_by_id
+from db import User, SSOProvider, get_user_by_sso_provider_and_user_identifier, get_user_by_id, get_all_users_order_by_name, SparqlQuery, find_all_sparql_query, find_sparql_query_by_user_id_or_public, find_sparql_query_by_id, find_sparql_query_by_user, get_sso_provider_by_name, get_sso_provider_by_id, get_users_by_sso_provider_id, get_all_sso_providers
 
 from werkzeug.utils import secure_filename
 
@@ -46,11 +49,10 @@ cache = TTLCache(maxsize=500, ttl=1)
 app = FastAPI(title="Ontodocker App", version="1.0.0", description=description)
 
 session_time_days = int(os.environ.get("MAX_SESSION_TIME_IN_DAYS", 14))
-app.add_middleware(SessionMiddleware, max_age=session_time_days * 24 * 60 * 60,
-                   secret_key=hashlib.sha256(os.environ.get("JWT_SECRET_KEY", secrets.token_urlsafe(32)).encode()).hexdigest()) 
+
 # max_age is by default set to 14 days, this should be less than the "SSO
-# Session Idle" time in the Keycloak settings. so that if the session expires after the desired time, the user will
-# be redirected to the Keycloak login page
+# Session Idle" time of the OIDC provider settings. so that if the session expires after the desired time, the user will
+# be redirected to the login page
 app.add_middleware(GZipMiddleware)  # Defaults to 500 bytes
 
 app.add_middleware(
@@ -125,7 +127,23 @@ async def timeout_middleware(request: Request, call_next):
     except asyncio.TimeoutError:
         return JSONResponse(content=f'Request processing time exceeded limit ({timeout})',
                             status_code=status.HTTP_504_GATEWAY_TIMEOUT)
+    
+@app.middleware("http")
+async def refresh_user(request: Request, call_next):
+    if request.url.path != "/logout":
+        user_id = request.session.get("id")
+        if user_id:
+            user = get_user_by_id(user_id, next(get_db_session()))
+            if user:
+                request.session["role"] = user.role
+            else:
+                return RedirectResponse(url="/logout", status_code=status.HTTP_303_SEE_OTHER)
+                
+    return await call_next(request)
 
+
+app.add_middleware(SessionMiddleware, max_age=session_time_days * 24 * 60 * 60,
+                   secret_key=hashlib.sha256(os.environ.get("JWT_SECRET_KEY", secrets.token_urlsafe(32)).encode()).hexdigest()) 
 
 @app.get("/",
          description="Homepage.<br>"
@@ -138,6 +156,10 @@ async def timeout_middleware(request: Request, call_next):
 async def homepage(response: Response, request: Request, 
                    settings: Annotated[Settings, Depends(get_settings)],
                    client: httpx.AsyncClient = Depends(get_client)):
+    # Refresh user info in session
+    # await refresh_user_session(request)
+
+
     # check Fuseki triplestore for datasets
     tdb_ids_jena = None
     try:
@@ -147,16 +169,15 @@ async def homepage(response: Response, request: Request,
 
     # set variables for navbar
     name = request.session.get("name", "anonymous")
-    email = request.session.get("email", "")
     api_key = request.session.get("api_key", "")
-    role = request.session.get("role", [])
+    role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
 
     ownurl = f"{request.url.scheme}://{request.url.hostname}"
     if request.url.port != 443 and request.url.port != 80:
         ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
         
 
-    if tdb_ids_jena and not any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES):
+    if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
         tdb_ids_jena = [item for item in tdb_ids_jena if
                         "-mem" not in item and
                         "_mem" not in item
@@ -168,16 +189,17 @@ async def homepage(response: Response, request: Request,
                                                      "tdb_name": "jena",
                                                      "tdb_ids_jena": tdb_ids_jena,
                                                      "name": name,
-                                                     "email": email,
-                                                     "api_key": api_key,
+                                                     "api_key": api_key if api_key else "",
                                                      "api_key_default_valid_days": settings.JWT_DEFAULT_DAYS_VALID,
                                                      "api_key_valid_to": decode_token(api_key).get("exp") if api_key else "-",
                                                      "ownurl": ownurl,
                                                      "property_tree": {},
                                                      "role": role,
-                                                     "isAdminRole": any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES),
-                                                     "isReadWriteRole": any(x in role for x in settings.KEYCLOAK_READWRITE_ROLES),
-                                                     "isReadOnlyRole": not role or any(x in role for x in settings.KEYCLOAK_READONLY_ROLES),
+                                                     "user_identifier": request.session.get("user_identifier", ""),
+                                                     "provider": request.session.get("provider", ""),
+                                                     "isAdminRole": role == settings.OIDC_ADMIN_ROLE,
+                                                     "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
+                                                     "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE,
                                                      })
 
 @app.get("/refresh_api_key",
@@ -191,17 +213,15 @@ async def generate_api_key(request: Request,
 
     valid = request.query_params.get("valid")
 
-    name = request.session["name"]
-    email = request.session["email"]
-    role = request.session["role"]
+    userid = request.session["id"]
 
     minDaysValid = int(os.environ.get("JWT_MIN_DAYS_VALID", 1))
     maxDaysValid = int(os.environ.get("JWT_MAX_DAYS_VALID", 90))
     if valid and valid.isdigit() and int(valid) >= minDaysValid and int(valid) <= maxDaysValid:
         # get user by query
-        user = filter_users(email, db_session)
+        user = get_user_by_id(userid, db_session)
         
-        api_key = create_apikey(name, email, role, int(valid), request, settings)
+        api_key = create_apikey(user.id, int(valid), request, settings)
         user.api_key = api_key
         db_session.commit()
         db_session.refresh(user)
@@ -216,12 +236,53 @@ async def generate_api_key(request: Request,
     else:
         return JSONResponse(content=f"Invalid valid days. Must be between {minDaysValid} days and {maxDaysValid} days.", status_code=400)
 
+@app.post('/update_password',
+          description="Update password of current user",
+          dependencies=[Depends(check_auth)],
+          include_in_schema=False)
+async def update_password(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            data = await request.json()
+            # Check if old password is correct
+            old_password = data.get("old_password", None)
+            if not old_password:
+                return JSONResponse(content=f"Old password must be given!", status_code=400)
+            user_id = request.session.get("id")
+            result = get_user_by_id(user_id, db_session)
+            if result:
+                if result.sso_provider_id is not None:
+                    return JSONResponse(content=f"Cannot change password of SSO user!", status_code=400)
+                if not bcrypt.checkpw(old_password.encode("utf-8"), result.password.encode("utf-8")):
+                    return JSONResponse(content=f"Old password is incorrect!", status_code=400)
+            else:
+                return JSONResponse(content=f"User with ID {user_id} does not exist!", status_code=404)
+            
+            new_password1 = data.get("new_password1", None)
+            new_password2 = data.get("new_password2", None)
+            if not new_password1 or len(new_password1) < 8:
+                return JSONResponse(content=f"Password must be at least 8 characters long!", status_code=400)
+            if new_password1 != new_password2:
+                return JSONResponse(content=f"Passwords do not match!", status_code=400)
+            if result:
+                hashed_password = bcrypt.hashpw(new_password1.encode("utf-8"), bcrypt.gensalt())
+                result.password = hashed_password.decode("utf-8")
+                db_session.commit()
+                db_session.refresh(result)
+                return JSONResponse(content="Password changed!", status_code=200)
+            else:
+                return JSONResponse(content=f"User with ID {user_id} does not exist!", status_code=404)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+
 # This post request will reload the page
 @app.post("/create_dataset",
           description="Create a new dataset in the Fuseki Jena triplestore. This endpoint requires authentication and the user must have the maintainer or admin role. The dataset is created by calling the `create_ds` method of the `FusekiConnection` class. If the dataset is successfully created, a success flash message is displayed. Otherwise, a warning flash message is displayed with the error message. After creating the dataset, the user is redirected to the homepage. If the `tdb_id` parameter is provided, the user is redirected to the corresponding dataset page. Otherwise, the user is redirected to the homepage.",
           summary="Create new dataset",
           tags=["Dataset"],
-          dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+          dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
           include_in_schema=False  # hide this endpoint in Swagger UI (http://localhost/docs)
           )
 async def create_dataset(response: Response, request: Request, create_tdb_id: Annotated[str, Form()],
@@ -280,6 +341,17 @@ async def create_dataset(response: Response, request: Request, create_tdb_id: An
 
     return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
+@app.get('/jena/{tdb_id}/generate_vowl',
+         description="Generate VOWL visualization of a dataset in the Fuseki Jena triplestore. This endpoint requires authentication and the user must have the maintainer or admin role. The VOWL visualization is generated by calling the `get_vowl` method of the `JenaConnection` class. If the VOWL visualization is successfully generated, a success flash message is displayed. Otherwise, a warning flash message is displayed with the error message. After generating the VOWL visualization, the user is redirected to the dataset page.",
+         summary="Generate VOWL visualization",
+         tags=["Datasets"],
+         dependencies=[Depends(check_auth_or_free_access)],
+         include_in_schema=False  # hide this endpoint in Swagger UI (http://localhost/docs)
+         )
+async def generate_vowl(response: Response, request: Request, tdb_id: str = "",
+                        client: httpx.AsyncClient = Depends(get_client)):
+    r = await get_jenaconn(tdb_id).get_vowl(client)
+    return JSONResponse(content="", status_code=200)
 
 @app.get('/jena/{tdb_id}',
          description="Query UI page for a specific dataset in the Fuseki Jena triplestore. This page allows users to query the data in the dataset using SPARQL queries. The dataset is identified by the `tdb_id` path parameter. If the dataset does not exist or the user does not have access to it, a 404 error is returned. The page displays the dataset name, available datasets in the triplestore, user information, and options based on the user's role. The page also shows whether the dataset is empty or not. If the dataset is not empty, a sample SPARQL query is executed to retrieve the first two triples in the dataset. The page also provides a visualization of the dataset using VOWL. The template used for rendering the page is 'index.html'.",
@@ -299,15 +371,14 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
 
     # set variables for navbar
     name = request.session.get("name", "anonymous")
-    email = request.session.get("email", "")
     api_key = request.session.get("api_key", "")
-    role = request.session.get("role", [])
+    role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
 
     ownurl = f"{request.url.scheme}://{request.url.hostname}"
     if request.url.port != 443 and request.url.port != 80:
         ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
 
-    if tdb_ids_jena and not any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES):
+    if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
         tdb_ids_jena = [item for item in tdb_ids_jena if
                         "-mem" not in item and
                         "_mem" not in item
@@ -334,8 +405,6 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
     named_graphs = []
     if graphs:
         named_graphs = [{"iri": x} for x in graphs]
-    
-    r = await get_jenaconn(tdb_id).get_vowl(client)
 
     return templates.TemplateResponse("index.html", {"request": request,
                                                      "ds_isempty": ds_isempty,
@@ -343,16 +412,17 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
                                                      "tdb_name": tdb_name,
                                                      "tdb_ids_jena": tdb_ids_jena,
                                                      "name": name,
-                                                     "email": email,
-                                                     "api_key": api_key,
+                                                    "api_key": api_key if api_key else "",
                                                      "api_key_default_valid_days": settings.JWT_DEFAULT_DAYS_VALID,
                                                      "api_key_valid_to": decode_token(api_key).get("exp") if api_key else "-",
                                                      "ownurl": ownurl,
                                                      "role": role,
+                                                     "user_identifier": request.session.get("user_identifier", ""),
+                                                     "provider": request.session.get("provider", ""),
                                                      "named_graphs": named_graphs,
-                                                     "isAdminRole": any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES),
-                                                     "isReadWriteRole": any(x in role for x in settings.KEYCLOAK_READWRITE_ROLES),
-                                                     "isReadOnlyRole": not role or any(x in role for x in settings.KEYCLOAK_READONLY_ROLES)
+                                                     "isAdminRole": role == settings.OIDC_ADMIN_ROLE,
+                                                     "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
+                                                     "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
                                                      })
 
 
@@ -370,7 +440,7 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
                       "Otherwise, the user is redirected to the homepage.",
           summary="Destroy dataset",
           tags=["Datasets"],
-          dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+          dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
           include_in_schema=False  # hide this endpoint in Swagger UI (http://localhost/docs)
           )
 async def destroy_dataset(response: Response, request: Request, tdb_id: Annotated[str, Form()], tdb_name: str = "jena",
@@ -406,7 +476,7 @@ async def destroy_dataset(response: Response, request: Request, tdb_id: Annotate
          description="Clear cache of query results",
          summary="Clear cache of query results",
          tags=["Datasets"],
-         dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+         dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
          include_in_schema=False
          )
 async def clear_cache(response: Response, request: Request, tdb_id: str = "", tdb_name: str = "jena"):
@@ -461,7 +531,7 @@ async def get_saved_queries(request: Request,
         for one_row in result:
             oneRowDict = one_row.__dict__
             oneRowDict.pop("_sa_instance_state")
-            oneRowDict["canDelete"] = one_row.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.KEYCLOAK_ADMIN_ROLES)
+            oneRowDict["canDelete"] = one_row.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.OIDC_ADMIN_ROLE)
             resultList.append(oneRowDict)
         return JSONResponse(content=resultList, status_code=200)
     except Exception as e:
@@ -479,10 +549,10 @@ async def load_saved_query(request: Request,
         result = find_sparql_query_by_id(query_id, db_session)
 
         if result:
-            if(result.public or result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.KEYCLOAK_ADMIN_ROLES)):
+            if(result.public or result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.OIDC_ADMIN_ROLE)):
                 resultDict = result.__dict__
                 resultDict.pop("_sa_instance_state")
-                resultDict["canDelete"] = result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.KEYCLOAK_ADMIN_ROLES)
+                resultDict["canDelete"] = result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.OIDC_ADMIN_ROLE)
                 return JSONResponse(content=resultDict, status_code=200)
         else:
             return JSONResponse(content=f"Query with ID {query_id} does not exist!", status_code=404)
@@ -491,7 +561,7 @@ async def load_saved_query(request: Request,
         return JSONResponse(content=str(e), status_code=400)
     
 @app.post("/saved_queries",
-            dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+            dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
             include_in_schema=False)
 async def save_query(request: Request,
                     settings: Annotated[Settings, Depends(get_settings)],
@@ -520,7 +590,7 @@ async def save_query(request: Request,
         return JSONResponse(content=str(e), status_code=400)
 
 @app.put("/saved_queries/{query_id}",
-          dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+          dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
           include_in_schema=False)
 async def update_query(request: Request,
                     settings: Annotated[Settings, Depends(get_settings)],
@@ -536,7 +606,7 @@ async def update_query(request: Request,
         
         result = find_sparql_query_by_id(query_id, db_session)
         if result:
-            if(result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.KEYCLOAK_ADMIN_ROLES)):
+            if(result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.OIDC_ADMIN_ROLE)):
                 result.query = query
                 result.public = public
                 db_session.commit()
@@ -549,7 +619,7 @@ async def update_query(request: Request,
         return JSONResponse(content=str(e), status_code=400)
 
 @app.delete("/saved_queries/{query_id}",
-            dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+            dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
             include_in_schema=False)
 async def delete_query(request: Request,
                        settings: Annotated[Settings, Depends(get_settings)],
@@ -558,7 +628,7 @@ async def delete_query(request: Request,
         query_id = request.path_params.get("query_id")
         result = find_sparql_query_by_id(query_id, db_session)
         if result:
-            if(result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.KEYCLOAK_ADMIN_ROLES)):
+            if(result.user_id == request.session.get("id") or any(x in request.session.get("role", []) for x in settings.OIDC_ADMIN_ROLE)):
                 db_session.delete(result)
                 db_session.commit()
                 return JSONResponse(content="Query deleted", status_code=200)
@@ -620,7 +690,7 @@ async def form_query(request: Request, tdb_id: str = Query("Tensile_Tests_Exampl
 @app.post("/update",
           description="Update data in dataset.",
           summary="Update data in dataset",
-          dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+          dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
           include_in_schema=False)  # use axios in frontend to prevent reload page
 async def form_update(request: Request, role: Annotated[list, Depends(get_user_role)],
                       settings: Annotated[Settings, Depends(get_settings)],
@@ -631,7 +701,7 @@ async def form_update(request: Request, role: Annotated[list, Depends(get_user_r
     if not request.session.get("name"):
         return JSONResponse(content="Not authenticated", status_code=401)
 
-    if not role or (not any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES) and not any(x in role for x in settings.KEYCLOAK_READWRITE_ROLES)):
+    if not role or (not role == settings.OIDC_ADMIN_ROLE and not role == settings.OIDC_READWRITE_ROLE):
         return JSONResponse(content="Access forbidden", status_code=403)
 
     try:
@@ -662,7 +732,7 @@ async def form_update(request: Request, role: Annotated[list, Depends(get_user_r
     
 @app.get("/admin",
         description="Admin page with backup and restore functionalities and other admin.",
-        dependencies=[Depends(check_auth), Depends(admin_role)],
+        dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
         include_in_schema=False)
 async def admin_page(request: Request, 
                      settings: Annotated[Settings, Depends(get_settings)],
@@ -671,9 +741,9 @@ async def admin_page(request: Request,
     # Prepare Template for Admin Page
     pass
 
-@app.get("/backup",
+@app.get("/admin/backup/backup",
          description="Backup with all datasets data and saved queries.",
-         dependencies=[Depends(check_auth), Depends(admin_role)],
+         dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
          include_in_schema=False)
 async def backup(request: Request, 
                             settings: Annotated[Settings, Depends(get_settings)],
@@ -717,9 +787,9 @@ async def backup(request: Request,
             print(f"\n###\nUnexpected error: \n{e = }\n###\n")
             return JSONResponse(content=str(e), status_code=400)
         
-@app.post("/restore",
+@app.post("/admin/backup/restore",
             description="Restore from a previous backup with its data and saved queries.",
-            dependencies=[Depends(check_auth), Depends(admin_role)],
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
             include_in_schema=False)
 async def restore_dataset(request: Request,
                             settings: Annotated[Settings, Depends(get_settings)],
@@ -778,7 +848,7 @@ async def restore_dataset(request: Request,
 @app.post("/upload",
           description="Upload RDF data (.rdf or .ttl) to Fuseki Jena dataset.",
           summary="Upload RDF data (.rdf or .ttl) to Fuseki Jena dataset",
-          dependencies=[Depends(check_auth), Depends(maintainer_or_admin_role)],
+          dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
           include_in_schema=False)  # use axios in frontend to prevent reload page
 async def upload_file(request: Request, role: Annotated[list, Depends(get_user_role)],
                       settings: Annotated[Settings, Depends(get_settings)],
@@ -839,7 +909,7 @@ async def upload_file(request: Request, role: Annotated[list, Depends(get_user_r
 
 @app.get('/admin/backup',
          description="Administration page for backup and restore",
-         dependencies=[Depends(check_auth), Depends(admin_role)],
+         dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
          include_in_schema=False 
 )
 async def admin_backup(response: Response, request: Request, settings: Annotated[Settings, Depends(get_settings)],
@@ -854,12 +924,11 @@ async def admin_backup(response: Response, request: Request, settings: Annotated
 
     # set variables for navbar
     name = request.session.get("name", "anonymous")
-    email = request.session.get("email", "")
     api_key = request.session.get("api_key", "")
-    role = request.session.get("role", [])
+    role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
         
 
-    if tdb_ids_jena and not any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES):
+    if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
         tdb_ids_jena = [item for item in tdb_ids_jena if
                         "-mem" not in item and
                         "_mem" not in item
@@ -867,16 +936,361 @@ async def admin_backup(response: Response, request: Request, settings: Annotated
 
     return templates.TemplateResponse("admin_backup.html", {"request": request,
                                                      "name": name,
-                                                     "email": email,
                                                      "tdb_ids_jena": tdb_ids_jena,
-                                                     "api_key": api_key,
+                                                     "api_key": api_key if api_key else "",
                                                      "api_key_default_valid_days": settings.JWT_DEFAULT_DAYS_VALID,
                                                      "api_key_valid_to": decode_token(api_key).get("exp") if api_key else "-",
                                                      "role": role,
-                                                     "isAdminRole": any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES),
-                                                     "isReadWriteRole": any(x in role for x in settings.KEYCLOAK_READWRITE_ROLES),
-                                                     "isReadOnlyRole": not role or any(x in role for x in settings.KEYCLOAK_READONLY_ROLES)
+                                                     "user_identifier": request.session.get("user_identifier", ""),
+                                                     "provider": request.session.get("provider", ""),
+                                                     "isAdminRole": role == settings.OIDC_ADMIN_ROLE,
+                                                     "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
+                                                     "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
                                                      })
+
+@app.get('/admin/users',
+         description="Administration page for users",
+         dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+         include_in_schema=False 
+)
+async def admin_users(response: Response, request: Request, settings: Annotated[Settings, Depends(get_settings)],
+                      db_session: Session = Depends(get_db_session),
+                   client: httpx.AsyncClient = Depends(get_client)):
+    
+    # check Fuseki triplestore for datasets
+    tdb_ids_jena = None
+    try:
+        tdb_ids_jena = await FusekiConnection.get_all_tdb_ids(client)
+    except Exception as e:
+        print(f"\n####\nFuseki:\nERROR: {str(e)}\n####\n")
+
+    # set variables for navbar
+    name = request.session.get("name", "anonymous")
+    api_key = request.session.get("api_key", "")
+    role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
+        
+
+    if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
+        tdb_ids_jena = [item for item in tdb_ids_jena if
+                        "-mem" not in item and
+                        "_mem" not in item
+                        ]
+        
+    available_providers = []
+    # Add identifier helptext to every provider
+    for provider in get_all_sso_providers(db_session):
+        identifier_helptext = ""
+        if provider.type == "keycloak":
+            identifier_helptext = "Keycloak Email address or username"
+        elif provider.type == "orcid":
+            identifier_helptext = "ORC iD"
+        available_providers.append({
+            "id": provider.id,
+            "type": provider.type,
+            "client_id": provider.client_id,
+            "name": provider.name,
+            "enabled": provider.enabled,
+            "identifier_helptext": identifier_helptext
+        })
+        
+
+    users = get_all_users_order_by_name(db_session)
+    # Iterate users and add to return object fields for display
+    return_users = []
+    for user in users:
+        return_users.append({
+            "id": user.id,
+            "name": user.name,
+            "sso_provider_id": user.sso_provider_id,
+            "user_identifier": user.user_identifier,
+            "role": user.role,
+            "last_login_time": datetime.datetime.fromtimestamp(user.last_login_timestamp, tz=datetime.UTC).astimezone(zoneinfo.ZoneInfo('Europe/Berlin')).strftime('%Y-%m-%d %H:%M:%S') if user.last_login_timestamp else "-",
+        })
+
+    return templates.TemplateResponse("admin_users.html", {"request": request,
+                                                     "name": name,
+                                                     "tdb_ids_jena": tdb_ids_jena,
+                                                     "api_key": api_key if api_key else "",
+                                                     "api_key_default_valid_days": settings.JWT_DEFAULT_DAYS_VALID,
+                                                     "api_key_valid_to": decode_token(api_key).get("exp") if api_key else "-",
+                                                     "role": role,
+                                                     "user_identifier": request.session.get("user_identifier", ""),
+                                                     "provider": request.session.get("provider", ""),
+                                                     "available_providers": available_providers,
+                                                     "users": return_users,
+                                                     "isAdminRole": role == settings.OIDC_ADMIN_ROLE,
+                                                     "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
+                                                     "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
+                                                     })
+
+@app.post('/admin/users',
+          description="Create a new user",
+          dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def create_user(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            data = await request.json()
+            sso_provider = data.get("sso_provider", None)
+            user_identifier = data.get("user_identifier", None)
+            user_password = data.get("user_password", None)
+            name = data.get("name", None)
+            role = data.get("role", None)
+            if not sso_provider:
+                return JSONResponse(content=f"SSO Provider must be selected!", status_code=400)
+            if not user_identifier:
+                return JSONResponse(content=f"User Identifier must be set!", status_code=400)
+            if not name:
+                return JSONResponse(content=f"Name must be set!", status_code=400)
+            if not role:
+                return JSONResponse(content=f"Role must be selected!", status_code=400)
+            if role not in settings.OIDC_REQUIRED_ROLES:
+                return JSONResponse(content=f"Role must be one of the given ones!", status_code=400)
+            if sso_provider == "local" and (not user_password or len(user_password) < 8):
+                return JSONResponse(content=f"Password must be at least 8 characters long!", status_code=400)
+            
+            # Check if user with same sso_provider and user_identifier already exists
+            result = get_user_by_sso_provider_and_user_identifier(sso_provider, user_identifier, db_session)
+            if result:
+                return JSONResponse(content=f"User with same SSO-Provider and User Identifier already exists!", status_code=400)
+            hashed_password = bcrypt.hashpw(user_password.encode("utf-8"), bcrypt.gensalt())
+            sso_provider_id = None if sso_provider is None or sso_provider == "local" else int(sso_provider)
+            user = User(sso_provider_id=sso_provider_id, user_identifier=user_identifier, password=hashed_password.decode("utf-8"), name=name, role=role)
+            db_session.add(user)
+            db_session.commit()
+            db_session.refresh(user)
+            return JSONResponse(content=user.id, status_code=201)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+        
+        
+@app.put('/admin/users/{user_id}',
+          description="Update a user",
+          dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+          include_in_schema=False)
+async def update_user(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            user_id = request.path_params.get("user_id")
+            data = await request.json()
+            sso_provider = data.get("sso_provider", None)
+            user_identifier = data.get("user_identifier", None)
+            user_password = data.get("user_password", None)
+            name = data.get("name", None)
+            role = data.get("role", None)
+            if not sso_provider:
+                return JSONResponse(content=f"SSO Provider must be selected!", status_code=400)
+            if not user_identifier:
+                return JSONResponse(content=f"User Identifier must be set!", status_code=400)
+            if not name:
+                return JSONResponse(content=f"Name must be set!", status_code=400)
+            if not role:
+                return JSONResponse(content=f"Role must be selected!", status_code=400)
+            if role not in settings.OIDC_REQUIRED_ROLES:
+                return JSONResponse(content=f"Role must be one of the given ones!", status_code=400)
+            if sso_provider == "local" and user_password and len(user_password) > 0 and len(user_password) < 8:
+                return JSONResponse(content=f"Password must be at least 8 characters long!", status_code=400)
+            result = get_user_by_id(user_id, db_session)
+            if result:
+                result.sso_provider_id = None if sso_provider is None or sso_provider == "local" else int(sso_provider)
+                result.user_identifier = user_identifier
+                if user_password and len(user_password) > 0:
+                    hashed_password = bcrypt.hashpw(user_password.encode("utf-8"), bcrypt.gensalt())
+                    result.password = hashed_password.decode("utf-8")
+                result.name = name
+                result.role = role
+                db_session.commit()
+                db_session.refresh(result)
+                return JSONResponse(content=result.id, status_code=200)
+            else:
+                return JSONResponse(content=f"User with ID {user_id} does not exist!", status_code=404)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+        
+@app.post('/admin/users/sso/keycloak',
+          description="Create a new Keycloak SSO Provider",
+          dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+          include_in_schema=False)
+async def create_keycloak_sso_provider(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            data = await request.json()
+            name = data.get("name", None)
+            server_metadata_url = data.get("server_metadata_url", None)
+            client_id = data.get("client_id", None)
+            client_secret = data.get("client_secret", None)
+            enabled = data.get("enabled", False)
+            if not name:
+                return JSONResponse(content=f"Name must be set!", status_code=400)
+            if not server_metadata_url:
+                return JSONResponse(content=f"Metadata URL must be set!", status_code=400)
+            if not client_id:
+                return JSONResponse(content=f"Client ID must be set!", status_code=400)
+            if not client_secret:
+                return JSONResponse(content=f"Client Secret must be set!", status_code=400)
+            # Check if SSO Provider with same name already exists
+            result = get_sso_provider_by_name(name, db_session)
+            if result:
+                return JSONResponse(content=f"SSO Provider with same name already exists!", status_code=400)
+            sso_provider = SSOProvider(type="keycloak", name=name, server_metadata_url=server_metadata_url, client_id=client_id, client_secret=client_secret, scope="openid profile", enabled=enabled)
+            db_session.add(sso_provider)
+            db_session.commit()
+            db_session.refresh(sso_provider)
+            return JSONResponse(content=sso_provider.id, status_code=201)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+        
+@app.post('/admin/users/sso/orcid',
+            description="Create a new ORCID SSO Provider",
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def create_orcid_sso_provider(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            data = await request.json()
+            name = data.get("name", None)
+            server_metadata_url = data.get("server_metadata_url", None)
+            client_id = data.get("client_id", None)
+            client_secret = data.get("client_secret", None)
+            enabled = data.get("enabled", False)
+            if not name:
+                return JSONResponse(content=f"Name must be set!", status_code=400)
+            if not server_metadata_url:
+                return JSONResponse(content=f"Metadata URL must be set!", status_code=400)
+            if not client_id:
+                return JSONResponse(content=f"Client ID must be set!", status_code=400)
+            if not client_secret:
+                return JSONResponse(content=f"Client Secret must be set!", status_code=400)
+            # Check if SSO Provider with same name already exists
+            result = get_sso_provider_by_name(name, db_session)
+            if result:
+                return JSONResponse(content=f"SSO Provider with same name already exists!", status_code=400)
+            sso_provider = SSOProvider(type="orcid", name=name, server_metadata_url=server_metadata_url, client_id=client_id, client_secret=client_secret, scope="openid /authenticate", enabled=enabled)
+            db_session.add(sso_provider)
+            db_session.commit()
+            db_session.refresh(sso_provider)
+            return JSONResponse(content=sso_provider.id, status_code=201)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+        
+@app.post('/admin/users/sso/{sso_id}/enabled',
+            description="Enable or disable a SSO Provider",
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def enable_disable_sso_provider(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            sso_id = request.path_params.get("sso_id")
+            data = await request.json()
+            enabled = data.get("enabled", False)
+            result = get_sso_provider_by_id(sso_id, db_session)
+            if result:
+                result.enabled = enabled
+                db_session.commit()
+                db_session.refresh(result)
+                if enabled:
+                    return JSONResponse(content=f"SSO Provider {result.name} enabled!", status_code=200)
+                else:
+                    return JSONResponse(content=f"SSO Provider {result.name} disabled!", status_code=200)
+            else:
+                return JSONResponse(content=f"SSO Provider with ID {sso_id} does not exist!", status_code=404)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+        
+@app.put('/admin/users/sso/{sso_id}',
+            description="Update the SSO Provider",
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def update_sso_provider_name(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            sso_id = request.path_params.get("sso_id")
+            data = await request.json()
+            name = data.get("name", None)
+            if not name:
+                return JSONResponse(content=f"Name is mandatory!", status_code=400)
+            result = get_sso_provider_by_id(sso_id, db_session)
+            if result:
+                # Check if Provider with same name exists
+                result_exists = get_sso_provider_by_name(name, db_session)
+                if result_exists and result_exists.id != int(sso_id):
+                    return JSONResponse(content=f"SSO Provider with name {name} already exists!", status_code=400)
+                result.name = name
+                db_session.commit()
+                db_session.refresh(result)
+                return JSONResponse(content=f"SSO Provider {name} updated!", status_code=200)
+            else:
+                return JSONResponse(content=f"SSO Provider with ID {sso_id} does not exist!", status_code=404)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+        
+@app.delete('/admin/users/sso/{sso_id}',
+            description="Delete a SSO Provider",
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def delete_sso_provider(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            sso_id = request.path_params.get("sso_id")
+            result = get_sso_provider_by_id(sso_id, db_session)
+            if result:
+                provider_name = result.name
+                # Set all users with this SSO Provider to None
+                users = get_users_by_sso_provider_id(sso_id, db_session)
+                users_count = len(users)
+                for user in users:
+                    user.sso_provider_id = None
+                    db_session.commit()
+                    db_session.refresh(user)
+                # Delete the SSO Provider
+                db_session.delete(result)
+                db_session.commit()
+                return JSONResponse(content=f"SSO Provider {provider_name} deleted! {users_count} users updated ", status_code=200)
+            else:
+                return JSONResponse(content=f"SSO Provider with ID {sso_id} does not exist!", status_code=404)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+
+        
+# Delete user
+@app.delete('/admin/users/{user_id}',
+            description="Delete a user",
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def delete_user(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session)):
+        try:
+            user_id = request.path_params.get("user_id")
+            result = get_user_by_id(user_id, db_session)
+            if result:
+                # Delete all saved queries of the user
+                result_queries = find_sparql_query_by_user(user_id, db_session)
+                for one_row in result_queries:
+                    db_session.delete(one_row)
+                # Delete the user
+                db_session.delete(result)
+                db_session.commit()
+                return JSONResponse(content="User deleted!", status_code=200)
+            else:
+                return JSONResponse(content=f"User with ID {user_id} does not exist!", status_code=404)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
 
 @app.exception_handler(401)
 async def custom_401_handler(request: Request, __):

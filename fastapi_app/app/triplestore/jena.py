@@ -74,7 +74,7 @@ class FusekiConnection():
         return await client.delete(f'{self._url}/$/datasets/{self.tdb_id}', headers=FusekiConnection._header)
 
     async def query(self, query, client):
-        return await client.post(self.server, params={"query": query}, headers=FusekiConnection._header)
+        return await client.get(self.server, params={"query": query}, headers=FusekiConnection._header)
 
     async def update(self, update_query, client):
         return await client.post(self.upserver, data={"update": update_query}, headers=FusekiConnection._header)
@@ -120,12 +120,16 @@ class FusekiConnection():
             f.write(r.content)
 
         # convert to vowl
-        tmp = f"{var_dir}data.json"
+        tmp = f"{var_dir}{self.tdb_id}.json"
         jpype.JPackage('de').uni_stuttgart.vis.vowl.owl2vowl.ConsoleMain.main(["-file", to_convert, "-output", tmp])
 
 
         # copy to webvwol
-        shutil.copy(tmp, f"{filedir}/../static/vowl/data/data.json")
+        shutil.copy(tmp, f"{filedir}/../static/vowl/data/{self.tdb_id}.json")
+
+        # delete tmp files
+        os.remove(to_convert)
+        os.remove(tmp)
 
 
 

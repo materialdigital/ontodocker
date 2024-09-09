@@ -9,21 +9,15 @@ from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.requests import Request
-from fastapi.responses import JSONResponse
 from sqlmodel import Session
 from urllib.parse import quote, urlparse
 from fastapi.security import  HTTPBearer
 from __init__ import engine, templates
-from libs.prokie_fastapi_oidc_auth.auth import OpenIDConnect
-from config import get_settings, get_keycloak_settings, Settings
+from config import get_settings, Settings
 from typing import Optional
 from utils import flash
 
-keycloak_setting = get_keycloak_settings()
-
-oidc = OpenIDConnect(keycloak_setting.host, keycloak_setting.realm, keycloak_setting.app_uri,
-                     keycloak_setting.client_id, keycloak_setting.client_secret,
-                     keycloak_setting.scope, keycloak_setting.verify)
+from db import get_user_by_id
 
 security = HTTPBearer(auto_error=False,
     description="Enter the API key (you will find it on the <a target='_blank' href='/'>Homepage</a> after login)")
@@ -31,7 +25,11 @@ security = HTTPBearer(auto_error=False,
 allow_unauthorized_readonly_api_access = os.environ.get("ALLOW_UNAUTHORIZED_READONLY_API_ACCESS", "False").lower() == "true"
 allow_unauthorized_readonly_ui_access = os.environ.get("ALLOW_UNAUTHORIZED_READONLY_UI_ACCESS", "False").lower() == "true"
 
-def create_apikey(name: str, email: str, role: list, validDays: int, request: Request,
+def get_db_session():
+    with Session(engine) as session:
+        yield session
+
+def create_apikey(id: int, validDays: int, request: Request,
                              settings: Annotated[Settings, Depends(get_settings)]):
     issued_at = datetime.now()
     expires_at = issued_at + timedelta(days=validDays)
@@ -40,9 +38,7 @@ def create_apikey(name: str, email: str, role: list, validDays: int, request: Re
         "iat": issued_at.timestamp(),  # Date/time when the token was issued
         "exp": expires_at.timestamp(),  # Date/time at which point the token is no longer valid
         "aud": "ontodocker",
-        "name": name,  # The full name of the user
-        "email": email,  # The email address of the user
-        "role": role  # The role of the user
+        "userid": id # User ID
     }
     encoded_jwt = jwt.encode(payload=claim_set,
                              key=settings.JWT_SECRET_KEY,
@@ -56,56 +52,74 @@ def decode_token(token: str):
 
 async def verify_readonly(request: Request, 
                           settings: Annotated[Settings, Depends(get_settings)], 
+                          db_session: Session = Depends(get_db_session),
                           security_bearer: Optional[str] = Depends(security)):
     if allow_unauthorized_readonly_api_access:
         return True
-    if not security_bearer or not security_bearer.credentials:
-        raise HTTPException(status_code=401, detail=f"No token offered.")
-    token = security_bearer.credentials
+    # Get the token from the GET Parameter 'token'
+    token = request.query_params.get("auth", None)
+    if not token:
+        if not security_bearer or not security_bearer.credentials:
+            raise HTTPException(status_code=401, detail=f"No token offered.")
+        else:
+            token = security_bearer.credentials
     try:
         decoded_jwt = jwt.decode(token, get_settings().JWT_SECRET_KEY, audience="ontodocker",
                                  algorithms=["HS256"],
                                  options={"verify_signature": True})
         # print(f"\n####\n{decoded_jwt = }\n####\n")
-        role = decoded_jwt.get('role', [])
-        return any(x in role for x in settings.KEYCLOAK_REQUIRED_ROLES)
+        userid = decoded_jwt.get('userid', None)
+        user = get_user_by_id(userid, db_session)
+        if not user:
+            raise HTTPException(status_code=401, detail=f"Token unauthorized. User not found.")
+        return user.role in settings.OIDC_REQUIRED_ROLES
     except jwt.exceptions.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Token unauthorized. {e}")
     
 async def verify_readwrite(request: Request, 
                            settings: Annotated[Settings, Depends(get_settings)], 
+                           db_session: Session = Depends(get_db_session),
                            security_bearer: Optional[str] = Depends(security)):
-    if not security_bearer or not security_bearer.credentials:
-        raise HTTPException(status_code=401, detail=f"No token offered.")
-    token = security_bearer.credentials
+    token = request.query_params.get("auth", None)
+    if not token:
+        if not security_bearer or not security_bearer.credentials:
+            raise HTTPException(status_code=401, detail=f"No token offered.")
+        else:
+            token = security_bearer.credentials
     try:
         decoded_jwt = jwt.decode(token, get_settings().JWT_SECRET_KEY, audience="ontodocker",
                                  algorithms=["HS256"],
                                  options={"verify_signature": True})
         # print(f"\n####\n{decoded_jwt = }\n####\n")
-        role = decoded_jwt.get('role', [])
-        return any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES) or any(x in role for x in settings.KEYCLOAK_READWRITE_ROLES)
+        userid = decoded_jwt.get('userid', None)
+        user = get_user_by_id(userid, db_session)
+        if not user:
+            raise HTTPException(status_code=401, detail=f"Token unauthorized. User not found.")
+        return user.role == settings.OIDC_ADMIN_ROLE or user.role == settings.OIDC_READWRITE_ROLE
     except jwt.exceptions.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Token unauthorized. {e}")
     
 async def verify_admin(request: Request, 
                        settings: Annotated[Settings, Depends(get_settings)], 
+                       db_session: Session = Depends(get_db_session),
                        security_bearer: Optional[str] = Depends(security)):
-    if not security_bearer or not security_bearer.credentials:
-        raise HTTPException(status_code=401, detail=f"No token offered.")
-    token = security_bearer.credentials
+    token = request.query_params.get("auth", None)
+    if not token:
+        if not security_bearer or not security_bearer.credentials:
+            raise HTTPException(status_code=401, detail=f"No token offered.")
+        else:
+            token = security_bearer.credentials
     try:
         decoded_jwt = jwt.decode(token, get_settings().JWT_SECRET_KEY, audience="ontodocker",
                                  algorithms=["HS256"],
                                  options={"verify_signature": True})
         # print(f"\n####\n{decoded_jwt = }\n####\n")
 
-        email = decoded_jwt.get('email')
-        role = decoded_jwt.get('role', [])
-
-        if settings.ADMIN_EMAIL and email == settings.ADMIN_EMAIL:
-            return True
-        return any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES)
+        userid = decoded_jwt.get('userid', None)
+        user = get_user_by_id(userid, db_session)
+        if not user:
+            raise HTTPException(status_code=401, detail=f"Token unauthorized. User not found.")
+        return user.role == settings.OIDC_ADMIN_ROLE
     except jwt.exceptions.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Token unauthorized. {e}")
 
@@ -146,8 +160,10 @@ async def get_user_role(request: Request):
     return request.session.get('role')
 
 async def maintainer_or_admin_role(request: Request, settings: Annotated[Settings, Depends(get_settings)], role=Depends(get_user_role)):
-    role_list = settings.KEYCLOAK_ADMIN_ROLES+settings.KEYCLOAK_READWRITE_ROLES
-    if role is None or not any(x in role for x in role_list):
+    if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true":
+        return True
+    role_list = settings.OIDC_ADMIN_ROLE+settings.OIDC_READWRITE_ROLE
+    if role is None or not role in role_list:
         if request.method == "GET":
             raise HTTPException(status_code=403, detail="Access forbidden (admin or maintainer only)")
         if request.method == "POST":
@@ -173,7 +189,9 @@ async def maintainer_or_admin_role(request: Request, settings: Annotated[Setting
     return True
 
 async def admin_role(request: Request, settings: Annotated[Settings, Depends(get_settings)], role=Depends(get_user_role)):
-    if role is None or not any(x in role for x in settings.KEYCLOAK_ADMIN_ROLES):
+    if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true":
+        return True
+    if role is None or role != settings.OIDC_ADMIN_ROLE:
         if request.method == "GET":
             raise HTTPException(status_code=403, detail="Access forbidden (admin only for now)")
         if request.method == "POST":
@@ -201,7 +219,6 @@ async def admin_role(request: Request, settings: Annotated[Settings, Depends(get
 
 def require_role():  # required_roles: List[str]
     """
-    keycloak role to be defined in app.config("KEYCLOAK_REQUIRED_ROLE")
     role has to be in user_info as "realm_access": {"roles": [str]}
     inspired by flask_oidc.OpenIDConnect.require_keycloak_role
     https://github.com/puiterwijk/flask-oidc/blob/master/flask_oidc/__init__.py#L502
@@ -213,8 +230,9 @@ def require_role():  # required_roles: List[str]
         async def decorated(request: Request, *args, **kwargs):
 
             roles = request.user_info.get('realm_access', []).get('roles', [])
+            # result = find_sparql_query_by_user_id_or_public(request.user_info.get('name', []), next(get_db_session()))
             # roles = request.session["role"]
-            required_roles = get_settings().KEYCLOAK_REQUIRED_ROLES
+            required_roles = get_settings().OIDC_REQUIRED_ROLES
             print(f"\n################{roles = }\n{required_roles = }################\n")
 
             if any(role in roles for role in required_roles):
@@ -229,11 +247,6 @@ def require_role():  # required_roles: List[str]
         return decorated
 
     return wrapper
-
-
-def get_db_session():
-    with Session(engine) as session:
-        yield session
 
 
 async def get_client():

@@ -8,6 +8,10 @@ let tableData;
 let file;
 
 function updateApiKeyValidToFormat(apiKeyValidToTimestamp) {
+    if(apiKeyValidToTimestamp === "-") {
+        $("#api_key_valid_to").text(apiKeyValidToTimestamp)
+        return;
+    }
     let newValidTo = "-";
     try {
         newValidTo = new Date(apiKeyValidToTimestamp * 1000).toLocaleString()
@@ -29,14 +33,237 @@ function createQueryOfNamedGraph(namedGraphIri) {
 
 $(document).ready(function () {
 
+    $('[data-toggle="tooltip"]').tooltip();
+
     $("#named_graphs").DataTable({
         pageLength: 5,
         lengthMenu: [[5, 10, 20], [5, 10, 20]]
     });
 
+    $("#saveKeycloakProviderBtn").click(function (e) {
+        e.preventDefault();
+        const keycloakProvider = {
+            "name": $("#keycloak_name").val(),
+            "server_metadata_url": $("#keycloak_server_metadata_url").val(),
+            "client_id": $("#keycloak_client_id").val(),
+            "client_secret": $("#keycloak_client_secret").val(),
+            "enabled": $("#keycloak_enabled").is(":checked")
+        };
+        axios.post("/admin/users/sso/keycloak", keycloakProvider)
+        .then((response) => {
+            window.location.reload();
+        })
+        .catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnSsoProviderMsgContainer"));
+        });
+    });
+
+    $("#saveOrcIdProviderBtn").click(function (e) {
+        e.preventDefault();
+        const orcidProvider = {
+            "name": $("#orcid_name").val(),
+            "server_metadata_url": $("#orcid_server_metadata_url").val(),
+            "client_id": $("#orcid_client_id").val(),
+            "client_secret": $("#orcid_client_secret").val(),
+            "enabled": $("#orcid_enabled").is(":checked")
+        };
+        axios.post("/admin/users/sso/orcid", orcidProvider)
+        .then((response) => {
+            window.location.reload();
+        })
+        .catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnSsoProviderMsgContainer"));
+        });
+    });
+
+    $(".ssoProviderEnabledSwitch").click(function (e) {
+        // Get the current state of the switch
+        const enabled = $(this).is(":checked");
+        const providerId = $(this).attr("data-providerid");
+        axios.post("/admin/users/sso/" + providerId + "/enabled", { enabled: enabled })
+        .then((response) => {
+            if (enabled) {
+                showFlashMessage("warning", "SSO Provider enabled!", "html", $("#returnSsoProviderMsgContainer"));
+            } else {
+                showFlashMessage("warning", "SSO Provider disabled!", "html", $("#returnSsoProviderMsgContainer"));
+            }
+        })
+        .catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnSsoProviderMsgContainer"));
+        });
+    });
+
+    $(".deleteSSOProviderBtn").click(function (e) {
+        e.preventDefault();
+        if (confirm("Are you sure you want to delete this SSO Provider?") === false) {
+            return;
+        }
+        axios.delete("/admin/users/sso/" + $(this).attr("data-providerid"))
+        .then((response) => {
+            window.location.reload();
+        })
+        .catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnSsoProviderMsgContainer"));
+        });
+    });
+
+
+    $(".saveUserBtn").click(function (e) {
+        e.preventDefault();
+        const userRow = $(this).closest(".userRow");
+        let newUserObj = {
+            "name": $(userRow).find(".editUserName").val(),
+            "sso_provider": $(userRow).find(".editUserSSOProvider").val(),
+            "user_identifier": $(userRow).find(".editUserIdentifier").val(),
+            "user_password": $(userRow).find(".editUserPassword").val(),
+            "role": $(userRow).find(".editUserRole").val()
+        };
+        axios.put("/admin/users/" + $(userRow).attr("data-userid"), newUserObj)
+        .then((response) => {
+            showFlashMessage("success", "User updated!", "html", $("#returnUsersMsgContainer"));
+            $(userRow).find(".editUser").hide();
+            $(userRow).find(".editUserHide").show();
+            $(userRow).find(".saveUserBtn").hide();
+            $(userRow).find(".userName").text(newUserObj.name);
+            $(userRow).find(".ssoProviderName").text($(userRow).find(".editUserSSOProvider").children("option").filter(":selected").text());
+            $(userRow).find(".userIdentifier").text(newUserObj.user_identifier);
+            $(userRow).find(".userRole").text($(userRow).find(".editUserRole").children("option").filter(":selected").text());
+        })
+        .catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnUsersMsgContainer"));
+        });
+    });
+
+    $(".editUserSSOProvider").change(function () {
+        if ($(this).val() == "local") {
+            $(this).closest(".userRow").find(".editUserPasswordContainer").show();
+        } else {
+            $(this).closest(".userRow").find(".editUserPasswordContainer").hide();
+        }
+        $("#editUserIdentifierHelptext").text($(this).children("option").filter(":selected").attr("data-available-identifier-text"));
+    });
+
+    $(".editUserBtn").click(function (e) {
+        e.preventDefault();
+        const userRow = $(this).closest(".userRow");
+        $(userRow).find(".editUserHide").hide();
+        $(userRow).find(".editUser").show();
+        $(userRow).find(".saveUserBtn").show();
+        if($(userRow).find(".editUserSSOProvider").val() == "local") {
+            $(userRow).find(".editUserPasswordContainer").show();
+        } else {
+            $(userRow).find(".editUserPasswordContainer").hide();
+        }
+    });
+
+    $(".deleteUserBtn").click(function (e) {
+        const userRow = $(this).closest(".userRow");
+        e.preventDefault();
+        if (confirm("Are you sure you want to delete this user?") === false) {
+            return;
+        }
+        axios.delete("/admin/users/" + $(userRow).attr("data-userid"))
+        .then((response) => {
+            window.location.reload();
+        }
+        ).catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnUsersMsgContainer"));
+        });
+    });
+        
+    if ($("#newUserSSOProvider").val() == "local") {
+        $("#newUserPassword").show();
+    } else {
+        $("#newUserPassword").hide();
+    }
+
+    $("#newUserSSOProvider").change(function () {
+        if ($("#newUserSSOProvider").val() != "") {
+            $("#newUserIdentifier").prop('disabled', false);
+            $("#newUserIdentifier").attr('placeholder', "");
+            $("#newUserRole").prop('disabled', false);
+        }
+
+        if ($("#newUserSSOProvider").val() == "local") {
+            $("#newUserPassword").show();
+        } else {
+            $("#newUserPassword").hide();
+        }
+        
+        $("#userIdentifierFieldDescription").text($("#newUserSSOProvider option:selected").attr("data-available-identifier-text"));
+    });
+
+    $(".editSSOProviderNameBtn").click(function (e) {   
+        e.preventDefault();
+        const ssoProviderRow = $(this).closest(".ssoProviderRow");
+        $(ssoProviderRow).find(".editSSOProviderHide").hide();
+        $(ssoProviderRow).find(".editSSOProviderName").show();
+        $(ssoProviderRow).find(".saveSSOProviderNameBtn").show();
+    });
+
+    $(".saveSSOProviderNameBtn").click(function (e) {
+        e.preventDefault();
+        const ssoProviderRow = $(this).closest(".ssoProviderRow");
+        const ssoProviderId = $(ssoProviderRow).attr("data-providerid");
+        const newName = $(ssoProviderRow).find(".editSSOProviderName").val();
+        axios.put("/admin/users/sso/" + ssoProviderId, { name: newName })
+        .then((response) => {
+            showFlashMessage("success", response.data, "html", $("#returnSsoProviderMsgContainer"));
+            $(ssoProviderRow).find(".ssoProviderName").text(newName);
+            $(ssoProviderRow).find(".editSSOProviderHide").show();
+            $(ssoProviderRow).find(".editSSOProviderName").hide();
+            $(ssoProviderRow).find(".saveSSOProviderNameBtn").hide();
+        })
+        .catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnSsoProviderMsgContainer"));
+        });
+    });
+
+    $("#newUserBtn").click(function (e) {
+        e.preventDefault();
+        pName = $("#newUserName").val();
+        pSsoProvider = $("#newUserSSOProvider").val();
+        pUserIdentifier = $("#newUserIdentifier").val();
+        pRole = $("#newUserRole").val();
+        pPassword = $("#newUserPassword").val();
+        if (pName === "") {
+            showFlashMessage("warning", "Name must be set", "html", $("#returnUsersMsgContainer"));
+            return;
+        }
+        if (pSsoProvider === "") {
+            showFlashMessage("warning", "SSO Provider must be selected", "html", $("#returnUsersMsgContainer"));
+            return;
+        }
+        if (pUserIdentifier === "") {
+            showFlashMessage("warning", "User Identifier must be set", "html", $("#returnUsersMsgContainer"));
+            return;
+        }
+        if (pRole === null || pRole === "") {
+            showFlashMessage("warning", "Role must be selected", "html", $("#returnUsersMsgContainer"));
+            return;
+        }
+        if(pSsoProvider === "local" && pPassword.length < 8) {
+            showFlashMessage("warning", "Password must be at least 8 characters long", "html", $("#returnUsersMsgContainer"));
+            return;
+        }
+
+        axios.post("/admin/users", {
+            name: pName,
+            sso_provider: pSsoProvider,
+            user_identifier: pUserIdentifier,
+            user_password: pPassword,
+            role: pRole
+        }).then((response) => {
+            window.location.reload();
+        }).catch((e) => {
+            showFlashMessage("danger", e.response.data, "html", $("#returnUsersMsgContainer"));
+            $("#restoreModal").modal('hide')
+        });
+    });
+
     $("#downloadBackupBtn").click(function (e) {
         e.preventDefault();
-        window.location.href = "/backup";
+        window.location.href = "/admin/backup/backup";
     });
 
     $("#restoreBackupBtn").click(function (e) {
@@ -53,7 +280,7 @@ $(document).ready(function () {
 
         $("#restoreModal").modal('show')
 
-        axios.post("/restore", formData, {
+        axios.post("/admin/backup/restore", formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
             }
@@ -175,6 +402,13 @@ $(document).ready(function () {
         }
     });
 
+    $("#password_change_button").click(function () {
+        $("#returnPasswordChangeMessageContainer").text("");
+        $("#old_password").val("");
+        $("#new_password1").val("");
+        $("#new_password2").val("");
+    });
+
     $("#api_key_button").click(function () {
         $("#returnMessageContainer").text("");
     });
@@ -191,7 +425,18 @@ $(document).ready(function () {
             .catch((e) => {
                 showFlashMessage("danger", e.response.data, "html", $("#returnMessageContainer"));
             })
-    })
+    });
+
+    $("body").on("click", "#password_change_submit", function (e) {
+        e.preventDefault();
+        axios.post("/update_password", {old_password: $("#old_password").val(), new_password1: $("#new_password1").val(), new_password2: $("#new_password2").val()})
+            .then(resp => {
+                showFlashMessage("success", resp.data, "html", $("#returnPasswordChangeMessageContainer"));
+            })
+            .catch((e) => {
+                showFlashMessage("danger", e.response.data, "html", $("#returnPasswordChangeMessageContainer"));
+            })
+    });
 
     // Add a click event listener to the buttons inside the form
     $("[form='qform']").on("click", function () {
@@ -430,9 +675,19 @@ $(document).ready(function () {
 
     $("#webvowl_show_button").click(function (e) {
         e.preventDefault();
-        $("#webvowl_container").removeClass("d-none");
-        $('#webvowl_iframe').attr('src', $('#webvowl_iframe').attr("data-src"));
-        $("#webvowl_available_container").addClass("d-none");
+        $(this).attr("disabled", true);
+        $(this).text("Generating VOWL, this may take a while, please wait...");
+        axios.get("/jena/"+$(this).attr("data-tdb-id")+"/generate_vowl")
+        .then((response) => {
+            $("#webvowl_container").removeClass("d-none");
+            $('#webvowl_iframe').attr('src', $('#webvowl_iframe').attr("data-src"));
+            $("#webvowl_available_container").addClass("d-none");
+            
+        })
+        .catch((e) => {
+            showFlashMessage("danger", e.response.data, "html");
+        });
+        
     });
 
     async function uploadData(fileType) {

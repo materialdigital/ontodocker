@@ -14,7 +14,7 @@
     <div class="row align-items-center">
         <div class="col">
             <h4 class="mt-3 mb-1">
-                Administration - Backup / Restore
+                Administration - Export / Import
             </h4>
             <div id="returnBackupMsgContainer"></div>
         </div>
@@ -22,7 +22,7 @@
     <hr>
     <div class="row">
         <div class="col-12">
-            <button type="button" id="downloadBackupBtn" class="btn btn-primary"><i class="fa-solid fa-download"></i> Download Backup</button>
+            <button type="button" id="downloadBackupBtn" class="btn btn-primary"><i class="fa-solid fa-download"></i> Download Export</button>
         </div>
     </div>
     <hr>
@@ -31,10 +31,10 @@
             
             <form method="post" id="restoreBackupForm" enctype="multipart/form-data">
                 <div class="mb-3">
-                    <label for="backupFile" class="form-label fw-bold">Restore Backup</label>
+                    <label for="backupFile" class="form-label fw-bold">Import</label>
                     <input class="form-control" type="file" id="backupFile" name="file" accept=".json" required>
                 </div>
-                <button type="submit" id="restoreBackupBtn" class="btn btn-primary"><i class="fa-solid fa-upload"></i> Restore</button>
+                <button type="submit" id="restoreBackupBtn" class="btn btn-primary"><i class="fa-solid fa-upload"></i> Import</button>
             </form>
         </div>
     </div>
