@@ -4,7 +4,7 @@ services:
   ontodocker:
     container_name: ontodocker
     build: fastapi_app
-    command: python3 -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
     env_file:
       - .env
     volumes:
@@ -12,13 +12,10 @@ services:
       - ./data:/data
     depends_on:
       - fuseki
-      #- blazegraph
     networks:
-      - testo
-      #- default
+      - ontodocker-net
     ports:
       - "${ONTODOCKER_RUN_PORT}:8000"
-      - 5678:5678
 #    restart: on-failure
 
   fuseki:
@@ -28,23 +25,22 @@ services:
       - ./data/fuseki/shiro.ini:/jena-fuseki/shiro.ini
       - ./data/fuseki/databases:/fuseki-base/databases
       - ./data/fuseki/configuration:/fuseki-base/configuration
-    user: root  # Run the container with root user
+    user: root  
     environment:
-      - JAVA_OPTIONS=-Xmx4096m -Xms4096m # TODO change this according to the memory of your PC/server
-      - ADMIN_PASSWORD=changeme # TODO
+      - JAVA_OPTIONS=-Xmx4096m -Xms4096m
+      - ADMIN_PASSWORD=${FUSEKI_ADMIN_PW}
       - ENABLE_DATA_WRITE=true
       - ENABLE_UPDATE=true
       - ENABLE_UPLOAD=true
       - QUERY_TIMEOUT=60000 # in milliseconds (60 seconds by default)
     networks:
-      - testo
-      #- default
-    ports:
-      - "3030:3030"
-#    restart: on-failure
+      - ontodocker-net
+    #ports:
+      #- "3030:3030"
+    #restart: on-failure
 
 
 networks:
-  testo:
-    name: testo
+  ontodocker-net:
+    name: ontodocker-net
     driver: bridge

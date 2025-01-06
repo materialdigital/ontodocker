@@ -4,9 +4,9 @@ Prerequisites: Docker and docker compose
 
 ### Ontodocker installation
 
-Once you have done the keycloak configuration part. Go back to the parent directory (`cd ..`)
+The keycloak part below is optional and can be skipped if usage is local only or a keycloak instance already exists.
 
-Create a `.env` file with the following contents and fill or change them accordingly.
+Create a `.env` file in the ontodocker parent directory with the following contents and fill or change them accordingly.
 ```
 ONTODOCKER_RUN_PORT=8000
 JWT_SECRET_KEY=
@@ -21,16 +21,16 @@ ALLOW_UNAUTHORIZED_READONLY_UI_ACCESS=true
 ANONYMOUS_IS_ADMIN=false
 ```
 
-Create a random key for `JWT_SECRET_KEY`   by excecuting
+Create a random key for `JWT_SECRET_KEY` by excecuting
 ```
 openssl rand -hex 36
 ```
-in a command line and fill the line in the `.env` file or use another randomized string.
+in a command line and append it to the line `JWT_SECRET_KEY=` in the `.env` file.
 
 Important: If you start the application for the first time set `ANONYMOUS_IS_ADMIN` to `true` and `ALLOW_UNAUTHORIZED_READONLY_UI_ACCESS` to `true`. That will give you administration access to configure local users or SSO Providers (like Keycloak (description below)) in the Administration interface.
 If you only need a local developing instance you can also fully use the anonymous user except for saving SPARQL queries.
 
-Edit the Fuseki admin password (`ADMIN_PASSWORD`) as well and `JAVA_OPTIONS` for Java Virtual Machine (JVM) memory settings in `docker-compose-dev.yml`.
+Edit the Fuseki admin password (`FUSEKI_ADMIN_PW=`) in the `.env` as well (e.g. execute `openssl rand -hex 36` again).
 
 Create a symlink to `docker-compose-dev.yml` by using
 ```
@@ -90,3 +90,20 @@ Apparently we only use the realm roles, but it can't hurt to set client roles to
 
 
 **Now you have done the Keycloak configuration!**
+
+
+### Known Issues
+
+If the container is accessed via a nginx reverse proxy and the login redirect does not work, try to add the following lines to its .conf 
+```
+proxy_set_header    Host               $host;
+proxy_set_header    X-Real-IP          $remote_addr;
+proxy_set_header    X-Forwarded-For    $proxy_add_x_forwarded_for;
+proxy_set_header    X-Forwarded-Host   $host;
+proxy_set_header    X-Forwarded-Server $host;
+proxy_set_header    X-Forwarded-Port   $server_port;
+proxy_set_header    X-Forwarded-Proto  $scheme;
+proxy_set_header    ssl-client-cert    $ssl_client_escaped_cert;
+```
+
+
