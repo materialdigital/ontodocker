@@ -26,6 +26,157 @@
 {% endblock %}
 
 {% block content %}
+<script>
+    $(document).ready(function () {
+        $('#ckan_setting').click(function () {
+            $('#ckan-publish-modal-dialog').modal('show');
+        });
+
+        const tag_template = '<div class="col-2 mt-2 tag-container"><div class="input-group"><input class="form-control ckan-tag" type="text" placeholder="Tag" /><div class="input-group-append"><button type="button" class="btn btn-danger remove-tag">-</button></div></div></div>';
+        $("#add-tag").click(function (e) {
+            e.preventDefault();
+            $('#ckan-dataset-tags').append(tag_template);
+        });
+        $(document).on("click", ".remove-tag", function (e) {
+            e.preventDefault();
+            $(this).closest(".tag-container").remove();
+        });
+
+        $("#ckan-publish").click(function () {
+            const tags = [];
+            $('.ckan-tag').each(function () {
+                tags.push($(this).val());
+            });
+            const data = {
+                dataset_name: $("#ckan-dataset-name").val(),
+                dataset_description: $("#ckan-dataset-description").val(),
+                dataset_tags: tags
+            };
+            axios.post('{{ ownurl }}/jena/{{ tdb_id }}/ckan', data)
+                .then(function (response) {
+                    showToastMessage('success', response.data);
+                    $('#ckan-publish-modal-dialog').modal('hide');
+                    reloadCkan();
+                })
+                .catch(function (error) {
+                    showToastMessage('danger', error.response.data);
+                });
+        });
+
+        $("#ckan-remove").click(function(e) {
+            e.preventDefault();
+            axios.delete('{{ ownurl }}/jena/{{ tdb_id }}/ckan')
+                .then(function (response) {
+                    showToastMessage('success', response.data);
+                    $('#ckan-publish-modal-dialog').modal('hide');
+                    reloadCkan();
+                })
+                .catch(function (error) {
+                    showToastMessage('danger', error.response.data);
+                });
+        });
+
+        reloadCkan();
+    });
+
+    function reloadCkan() {
+        axios.get('{{ ownurl }}/jena/{{ tdb_id }}/ckan')
+            .then(function (response) {
+                $('#ckanPublishText').text('CKAN edit/remove');
+                $("#ckan-dataset-name").val(response.data.name);
+                $("#ckan-dataset-description").val(response.data.notes);
+                $("#ckan-remove-container").show();
+                $('#ckan-dataset-tags').empty();
+                response.data.tags.forEach(function (tag) {
+                    $('#ckan-dataset-tags').append(`<div class="col-2 mt-2 tag-container"><div class="input-group"><input class="form-control ckan-tag"  value="${tag.name}" type="text" placeholder="Tag" /><div class="input-group-append"><button type="button" class="btn btn-danger remove-tag">-</button></div></div></div>`);
+                });
+            })
+            .catch(function (error) {
+                if(error.response.status === 404) {
+                    $('#ckanPublishText').text('CKAN publish');
+                    $("#ckan-dataset-name").val("{{ tdb_id }}");
+                    $("#ckan-dataset-description").val("This dataset only publishes a _SPARQL_ endpoint where the data can be queried.");
+                    $("#ckan-remove-container").hide();
+                    $('#ckan-dataset-tags').empty();
+                }
+                // if other than 404 print error
+                if (error.response.status !== 404) {
+                    showToastMessage('error', error.response.data);
+                }
+                // if 424 then CKAN is not configured, so hide ckan publish button
+                if (error.response.status === 424) {
+                    $('#ckan_setting').hide();
+                }
+            });
+    }
+</script>
+<div aria-live="polite" aria-atomic="true" style="z-index:9999;">
+    <!-- Position it -->
+    <div id="toastContainer" style="position: absolute; top: 0; right: 0;z-index:9999;">
+    </div>
+</div>
+<div class="modal modal-xl fade" tabindex="-1" role="dialog" id="ckan-publish-modal-dialog" data-bs-keyboard="false"
+    data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">CKAN Publish</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                {% if user_identifier and (isReadWriteRole or isAdminRole) %}
+                <div class="row">
+                    <div class="col-12">
+                        Publish the dataset with its corresponding API-SPARQL and UI-URL to the configured CKAN.
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <!-- CKAN dataset name -->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-name" class="form-labelfw-bold">Dataset Name</label>
+                            <input class="form-control" type="text" id="ckan-dataset-name" value="{{ tdb_id }}"
+                                required />
+                        </div>
+                        <!-- CKAN dataset description-->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-description" class="form-labelfw-bold">Dataset Description</label>
+                            <textarea class="form-control" id="ckan-dataset-description" rows="10"
+                                required>This dataset only publishes a _SPARQL_ endpoint where the data can be queried.</textarea>
+                        </div>
+                        <!-- Add list of tags dynamically with a plus button, tags are key value pairs, so two input tags per row-->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-tags" class="form-label fw-bold">Tags</label>
+                            <button type="button" class="btn btn-primary btn-sm ms-1" id="add-tag">+</button>
+                            <div class="row" id="ckan-dataset-tags"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <button type="button" class="btn btn-primary" id="ckan-publish">
+                            <i class="fa-solid fa-upload"></i>
+                            <span class="ms-1">Link to CKAN</span>
+                        </button>
+                    </div>
+                    <div class="col-auto" id="ckan-remove-container" style="display:none;">
+                        <button type="button" class="btn btn-danger" id="ckan-remove">
+                            <i class="fa-solid fa-trash"></i>
+                            <span class="ms-1">Unlink from CKAN</span>
+                        </button>
+                    </div>
+                </div>
+                {% else %}
+                <div class="row">
+                    <div class="col-12">
+                        <p>CKAN publish is only available for authenticated users with write permission.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 <div class="container-fluid px-4">
 
     {% if not tdb_id %}
@@ -43,6 +194,16 @@
                     <span id="tdb_id">{{ tdb_id }}</span>
                 </h4>
             </div>
+            {% if isAdminRole or isReadWriteRole %}
+            <div class="col-auto">
+                <label class="btn btn-outline-primary" for="ckan_setting" data-bs-custom-class="custom-tooltip"
+                    data-bs-toggle="tooltip" data-bs-placement="bottom" title="Edit CKAN publish state">
+                    <input id="ckan_setting" type="button" style="display:none">
+                    <i class="fa-solid fa-upload"></i>
+                    <span class="ms-1" id="ckanPublishText">CKAN publish</span>
+                </label>
+            </div>
+            {% endif %}
             <div class="col-auto">
                 <label class="btn btn-outline-primary" for="download-trig-file" data-bs-custom-class="custom-tooltip"
                     data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download as Trig File">
@@ -350,8 +511,7 @@ where the columns IRI and Label are searchable
 <div class="container-fluid px-4 mb-4 {% if ds_isempty %}d-none{% endif %}" id="webvowl_available_container">
     <div class="card mb-4">
         <div class="card-body">
-            <button type="button" class="btn btn-outline-secondary" id="webvowl_show_button"
-                data-tdb-id="{{ tdb_id }}"
+            <button type="button" class="btn btn-outline-secondary" id="webvowl_show_button" data-tdb-id="{{ tdb_id }}"
                 data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
                 title="Visualize the dataset">
                 <i class="fa-solid fa-eye"></i>
@@ -367,7 +527,8 @@ where the columns IRI and Label are searchable
                 <div class="input-group mb-3">
                     <div class="form-floating">
                         <iframe style="height:700px;width:100%;" id="webvowl_iframe"
-                            data-src="{{ url_for('static', path='vowl/index.html?tdb_id='+tdb_id ) }}" frameborder="0"></iframe>
+                            data-src="{{ url_for('static', path='vowl/index.html?tdb_id='+tdb_id ) }}"
+                            frameborder="0"></iframe>
                     </div>
                 </div>
             </div>

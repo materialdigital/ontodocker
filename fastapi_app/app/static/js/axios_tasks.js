@@ -47,7 +47,8 @@ $(document).ready(function () {
             "server_metadata_url": $("#keycloak_server_metadata_url").val(),
             "client_id": $("#keycloak_client_id").val(),
             "client_secret": $("#keycloak_client_secret").val(),
-            "enabled": $("#keycloak_enabled").is(":checked")
+            "enabled": $("#keycloak_enabled").is(":checked"),
+            "new_user_role": $("#keycloak_new_user_role").val()
         };
         axios.post("/admin/users/sso/keycloak", keycloakProvider)
         .then((response) => {
@@ -65,7 +66,8 @@ $(document).ready(function () {
             "server_metadata_url": $("#orcid_server_metadata_url").val(),
             "client_id": $("#orcid_client_id").val(),
             "client_secret": $("#orcid_client_secret").val(),
-            "enabled": $("#orcid_enabled").is(":checked")
+            "enabled": $("#orcid_enabled").is(":checked"),
+            "new_user_role": $("#orcid_new_user_role").val()
         };
         axios.post("/admin/users/sso/orcid", orcidProvider)
         .then((response) => {
@@ -193,26 +195,28 @@ $(document).ready(function () {
         $("#userIdentifierFieldDescription").text($("#newUserSSOProvider option:selected").attr("data-available-identifier-text"));
     });
 
-    $(".editSSOProviderNameBtn").click(function (e) {   
+    $(".editSSOProviderBtn").click(function (e) {   
         e.preventDefault();
         const ssoProviderRow = $(this).closest(".ssoProviderRow");
         $(ssoProviderRow).find(".editSSOProviderHide").hide();
-        $(ssoProviderRow).find(".editSSOProviderName").show();
-        $(ssoProviderRow).find(".saveSSOProviderNameBtn").show();
+        $(ssoProviderRow).find(".editSSOProvider").show();
+        $(ssoProviderRow).find(".saveSSOProviderBtn").show();
     });
 
-    $(".saveSSOProviderNameBtn").click(function (e) {
+    $(".saveSSOProviderBtn").click(function (e) {
         e.preventDefault();
         const ssoProviderRow = $(this).closest(".ssoProviderRow");
         const ssoProviderId = $(ssoProviderRow).attr("data-providerid");
         const newName = $(ssoProviderRow).find(".editSSOProviderName").val();
-        axios.put("/admin/users/sso/" + ssoProviderId, { name: newName })
+        const newNewUserRole = $(ssoProviderRow).find(".editSSOProviderUserRole").val();
+        axios.put("/admin/users/sso/" + ssoProviderId, { name: newName, new_user_role: newNewUserRole })
         .then((response) => {
             showFlashMessage("success", response.data, "html", $("#returnSsoProviderMsgContainer"));
             $(ssoProviderRow).find(".ssoProviderName").text(newName);
+            $(ssoProviderRow).find(".ssoProviderUserRole").text($(ssoProviderRow).find(".editSSOProviderUserRole").children("option").filter(":selected").text());
             $(ssoProviderRow).find(".editSSOProviderHide").show();
-            $(ssoProviderRow).find(".editSSOProviderName").hide();
-            $(ssoProviderRow).find(".saveSSOProviderNameBtn").hide();
+            $(ssoProviderRow).find(".editSSOProvider").hide();
+            $(ssoProviderRow).find(".saveSSOProviderBtn").hide();
         })
         .catch((e) => {
             showFlashMessage("danger", e.response.data, "html", $("#returnSsoProviderMsgContainer"));

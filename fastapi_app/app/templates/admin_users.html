@@ -158,6 +158,7 @@
             <th>Name</th>
             <th>Client-ID</th>
             <th>Enabled</th>
+            <th>User Role of unkown Users</th>
             <th>Actions</th>
         </thead>
         <tbody>
@@ -177,10 +178,29 @@
                     </div>
                 </td>
                 <td>
-                    <button type="button" class="btn btn-primary btn-sm editSSOProviderNameBtn editSSOProviderHide">
+                    <select class="form-select editSSOProviderUserRole editSSOProvider" style="display:none;">
+                        <option value="">No role/No automatic user creation</option>
+                        <option value="ro" {% if provider.new_user_role=='ro' %} selected {% endif %}>Read Only</option>
+                        <option value="rw" {% if provider.new_user_role=='rw' %} selected {% endif %}>Read / Write</option>
+                        <option value="admin" {% if provider.new_user_role=='admin' %} selected {% endif %}>Admin</option>
+                    </select>
+                    <span class="editSSOProviderHide ssoProviderUserRole">
+                        {% if provider.new_user_role=='ro' %}
+                        Read Only
+                        {% elif provider.new_user_role=='rw' %}
+                        Read / Write
+                        {% elif provider.new_user_role=='admin' %}
+                        Admin
+                        {% else %}
+                        No role/No automatic user creation
+                        {% endif %}
+                    </span>
+                </td>
+                <td>
+                    <button type="button" class="btn btn-primary btn-sm editSSOProviderBtn editSSOProviderHide">
                         <i class="fa-solid fa-edit"></i>
                     </button>
-                    <button type="button" class="btn btn-primary btn-sm saveSSOProviderNameBtn"
+                    <button type="button" class="btn btn-primary btn-sm saveSSOProviderBtn"
                         style="display:none;">
                         <i class="fa-solid fa-save"></i>
                     </button>
@@ -224,10 +244,18 @@
                         required />
                     <small class="form-text text-muted">Client Secret</small>
                 </div>
-                <div class="col-4">
+                <div class="col-3">
                     <input type="text" id="keycloak_server_metadata_url" class="form-control" placeholder="Metadata URL"
                         required />
                     <small class="form-text text-muted">Metadata URL (.well-known)</small>
+                </div>
+                <div class="col-md-1">
+                    <select class="form-select" id="keycloak_new_user_role">
+                        <option value="">No role/No automatic user creation</option>
+                        <option value="ro" {% if provider.new_user_role=='ro' %} selected {% endif %}>Read Only</option>
+                        <option value="rw" {% if provider.new_user_role=='rw' %} selected {% endif %}>Read / Write</option>
+                        <option value="admin" {% if provider.new_user_role=='admin' %} selected {% endif %}>Admin</option>
+                    </select>
                 </div>
                 <div class="col-1 form-check form-switch ms-2 mt-2">
                     <label class="form-check-label" for="keycloak_enabled">Enabled</label>
@@ -263,10 +291,19 @@
                         required />
                     <small class="form-text text-muted">Client Secret</small>
                 </div>
-                <div class="col-4">
+                <div class="col-3">
                     <input type="text" id="orcid_server_metadata_url" class="form-control" placeholder="Metadata URL"
                         required />
                     <small class="form-text text-muted">Metadata URL (.well-known)</small>
+                </div>
+                <div class="col-md-1">
+                    <select id="orcid_new_user_role" class="form-select">
+                        <option value="">No role/No automatic user creation</option>
+                        <option value="ro">Read Only</option>
+                        <option value="rw">Read / Write</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <small class="form-text text-muted">User Role of unknown users</small>
                 </div>
                 <div class="col-1 form-check form-switch ms-2 mt-2">
                     <label class="form-check-label" for="orcid_enabled">Enabled</label>

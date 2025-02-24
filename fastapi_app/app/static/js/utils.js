@@ -3,6 +3,9 @@ Yasgui tab switch, copy to clipboard, modal message for future function, tooltip
  */
 
 
+const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const randomRef = (len = 6) => [...Array(len)].map(() => chars.charAt(Math.floor(Math.random() * chars.length))).join("");
+
 /* Future feature modal */
 function future(event) {
     event.preventDefault();
@@ -75,22 +78,27 @@ function showFlashMessage(type, message, message_type, containerElement, small) 
  * @param {string} message - The message to display in the toast.
  */
 function showToastMessage(type, message) {
-    const toastLiveExample =  document.getElementById(`${type}Toast`);
-    // const bodyElement = toastLiveExample.querySelectorAll('.toast-body')[0];
-    const bodyElement = toastLiveExample.querySelector('.toast-body');
+    const toastContainer = $("#toastContainer");
+    if(!toastContainer) {
+        console.error("ToastContainer is not found in the document.");
+        return;
+    }
 
-    let icon, color;
+    let header, icon, color;
 
     switch (type) {
         case 'success':
+            header = "Success";
             icon = 'fa-circle-check';
             color = '--bs-success-rgb';
             break;
         case 'warning':
+            header = "Warning";
             icon = 'fa-triangle-exclamation';
             color = '--bs-warning-rgb';
             break;
         case 'danger':
+            header = "Error";
             icon = 'fa-triangle-exclamation';
             color = '--bs-danger-rgb'
             break;
@@ -99,8 +107,20 @@ function showToastMessage(type, message) {
             return;
     }
 
-    bodyElement.innerHTML = `<i class="fa-solid ${icon}" style="color: rgb(var(${color}));"></i><span class="m-1">${message}</span>`;
-    const toastBootstrap = bootstrap.Toast.getOrCreateInstance(toastLiveExample);
+    let id = randomRef(20);
+    const template = `<div class="toast" id="${id}" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i class="fa-solid ${icon}" style="color: rgb(var(${color}));"></i>
+                <strong class="ms-1">${header}</strong>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                <span class="m-1">${message}</span>
+            </div>
+        </div>`;
+
+    toastContainer.append(template);
+    const toastBootstrap = bootstrap.Toast.getOrCreateInstance(document.getElementById(id));
     toastBootstrap.show();
 }
 /* End of Show a toast message with a specified message and type.*/

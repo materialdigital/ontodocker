@@ -9,6 +9,7 @@ from typing import Optional
 import datetime
 import zoneinfo
 import bcrypt
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status, Form, Query, UploadFile, File
@@ -22,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from sqlmodel import Session
-from db import User, SSOProvider, get_user_by_sso_provider_and_user_identifier, get_user_by_id, get_all_users_order_by_name, SparqlQuery, find_all_sparql_query, find_sparql_query_by_user_id_or_public, find_sparql_query_by_id, find_sparql_query_by_user, get_sso_provider_by_name, get_sso_provider_by_id, get_users_by_sso_provider_id, get_all_sso_providers
+from db import User, SSOProvider, get_user_by_sso_provider_and_user_identifier, get_user_by_id, get_all_users_order_by_name, SparqlQuery, find_all_sparql_query, find_sparql_query_by_user_id_or_public, find_sparql_query_by_id, find_sparql_query_by_user, get_sso_provider_by_name, get_sso_provider_by_id, get_users_by_sso_provider_id, get_all_sso_providers, get_db_version_or_init, get_application_store_by_key, create_or_update_application_store_by, find_ckan_dataset_by_dataset_name, CkanDataset
 
 from werkzeug.utils import secure_filename
 
@@ -43,6 +44,8 @@ from dependencies import get_client, check_auth, check_auth_or_free_access, get_
 from cachetools import TTLCache
 import json
 from fastapi.responses import FileResponse
+import urllib
+import urllib.request as urllib2
 
 cache = TTLCache(maxsize=500, ttl=1)
 
@@ -96,6 +99,7 @@ app.mount("/static", AuthStaticFiles(directory="static"), name="static")
 @app.on_event("startup")
 async def on_startup():
     create_db_and_tables()
+    migrate_db()
 
     # remove default dataset "ds" in Fuseki
     async with httpx.AsyncClient() as client:
@@ -106,6 +110,19 @@ async def on_startup():
         except Exception as e:
             print(f"Error while removing default dataset 'ds' in Fuseki:\n{str(e)}")
 
+def migrate_db():
+    version = get_db_version_or_init(next(get_db_session()))
+    if version == "0":
+        print("Migrating database to version 1")
+        # Add new_user_role column to SSOProvider table
+        session = next(get_db_session())
+        result = session.execute("select count(*) from pragma_table_info('ssoprovider') where name='new_user_role';")
+        if result.scalar() == 0:
+            session.execute("ALTER TABLE ssoprovider ADD COLUMN new_user_role TEXT")
+        session.execute("UPDATE applicationstore SET value = '1' WHERE key = 'db_version'")
+        session.commit()
+        session.close()
+        print("Database migrated to version 1")
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
@@ -425,6 +442,178 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
                                                      "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
                                                      })
 
+@app.get("/jena/{tdb_id}/ckan",
+         description="Check if dataset exists in CKAN.",
+         summary="Check if dataset exists in CKAN",
+         dependencies=[Depends(check_auth_or_free_access)],
+         include_in_schema=False)
+async def get_ckan_dataset(request: Request,
+                             tdb_id: str,
+                             client: httpx.AsyncClient = Depends(get_client),
+                             db_session: Session = Depends(get_db_session)):
+    # Get CKAN dataset by ID
+    ckan_url = get_application_store_by_key(db_session, "ckan_url")
+    ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
+    if ckan_url and ckan_api_key:
+        try:
+            ckan_dataset = find_ckan_dataset_by_dataset_name(tdb_id, db_session)
+            if ckan_dataset:
+                ckan_url = ckan_url + "/api/3/action/package_show"
+                headers = {
+                    "Authorization": ckan_api_key,
+                    "Content-Type": "application/json"
+                }
+                data = {
+                    "id": ckan_dataset.ckan_id
+                }
+                r = await client.post(ckan_url, headers=headers, json=data)
+                result_json = r.json()
+                if r.status_code == 200 and "success" in result_json and result_json["success"]:
+                    return JSONResponse(content=result_json["result"], status_code=200)
+                else:
+                    return JSONResponse(content={"exists": False}, status_code=200)
+            else:
+                return JSONResponse(content="", status_code=404)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return JSONResponse(content=str(e), status_code=400)
+    else:
+        return JSONResponse(content=str("CKAN URL or API key not configured"), status_code=424)
+    
+@app.post('/jena/{tdb_id}/ckan',
+          description="Create or update dataset in CKAN.",
+          summary="Create or update dataset in CKAN",
+          dependencies=[Depends(check_auth)],
+          include_in_schema=False)
+async def create_or_update_ckan_dataset(request: Request,
+                              tdb_id: str,
+                              client: httpx.AsyncClient = Depends(get_client),
+                              db_session: Session = Depends(get_db_session)):
+    
+    ownurl = f"{request.url.scheme}://{request.url.hostname}"
+    if request.url.port != 443 and request.url.port != 80:
+        ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+
+    data = await request.json()
+    dataset_name = data.get("dataset_name", None)
+    # regex the name of the new dataset, must be between 2 and 100 characters long and contain only lowercase alphanumeric characters, - and _
+    if not dataset_name or not re.match(r"^[a-z0-9_-]{2,100}$", dataset_name):
+        return JSONResponse(content="Invalid dataset name. Must be between 2 and 100 characters long and contain only lowercase alphanumeric characters, - and _", status_code=400)
+
+    try:
+        ckan_url = get_application_store_by_key(db_session, "ckan_url")
+        ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
+        ckan_organization_id = get_application_store_by_key(db_session, "ckan_organization_id")
+        ckan_group_ids = json.loads(get_application_store_by_key(db_session, "ckan_group_ids", "[]"))
+        if ckan_url and ckan_api_key and ckan_organization_id:
+            headers = {
+                "Authorization": ckan_api_key,
+                "Content-Type": "application/json"
+            }
+            ckan_dataset = find_ckan_dataset_by_dataset_name(tdb_id, db_session)
+            if not ckan_dataset:
+                ckan_dataset = CkanDataset(dataset_name=tdb_id, user_id=request.session.get("id"), published_timestamp=int(time.time()))
+                ckan_url = ckan_url + "/api/3/action/package_create"
+                data = {
+                    "name": dataset_name,
+                    "title": dataset_name,
+                    "private": False,
+                    "notes": data.get("dataset_description"),
+                    "owner_org": ckan_organization_id,
+                    "maintainer": request.session.get("user_identifier", ""),
+                    "author": request.session.get("user_identifier", ""),
+                    "groups": [{"id": group_id} for group_id in ckan_group_ids],
+                    "resources": [
+                        {
+                            "name": f"Exploreable dataset with YasGUI at {ownurl}",
+                            "url": f"{ownurl}/jena/{tdb_id}",
+                            "description": "Points to the user interface"
+                        },
+                        {
+                            "name": f"SPARQL API endpoint",
+                            "url": f"{ownurl}/api/v1/jena/{tdb_id}/sparql"
+                        },
+                        {
+                            "name": f"Data API endpoint",
+                            "url": f"{ownurl}/api/v1/jena/{tdb_id}"
+                        }
+                    ],
+                    "tags": [{"name": tag} for tag in data.get("dataset_tags", [])]
+                }
+                r = await client.post(ckan_url, headers=headers, json=data)
+                result_json = r.json()
+            else:
+                ckan_dataset.published_timestamp = int(time.time())
+                ckan_dataset.user_id = request.session.get("id")
+                ckan_url = ckan_url + "/api/3/action/package_patch"
+                data = {
+                    "id": ckan_dataset.ckan_id,
+                    "name": dataset_name,
+                    "title": dataset_name,
+                    "notes": data.get("dataset_description"),
+                    "maintainer": request.session.get("user_identifier", ""),
+                    "tags": [{"name": tag} for tag in data.get("dataset_tags", [])],
+                    "groups": [{"id": group_id} for group_id in ckan_group_ids]
+                }
+                r = await client.post(ckan_url, headers=headers, json=data)
+                result_json = r.json()
+            if r.status_code == 200 and "success" in result_json and result_json["success"]:
+                ckan_dataset.ckan_id = result_json["result"]["id"]
+                if not ckan_dataset.id:
+                    db_session.add(ckan_dataset)
+                    db_session.commit()
+                else:
+                    db_session.commit()
+
+                return JSONResponse(content="Linked Dataset in CKAN", status_code=200)
+            else:
+                if "error" in result_json:
+                    error_message = ", ".join([f"{k}: {', '.join(v)}" for k, v in result_json["error"].items() if k != "__type"])
+                    return JSONResponse(content=error_message, status_code=400)
+                return JSONResponse(content=result_json, status_code=400)
+        else:
+            return JSONResponse(content=str("CKAN URL or API key or Organization not configured"), status_code=424)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return JSONResponse(content=str(e), status_code=400)
+
+@app.delete('/jena/{tdb_id}/ckan',
+            description="Delete dataset in CKAN.",
+            summary="Delete dataset in CKAN",
+            dependencies=[Depends(check_auth)],
+            include_in_schema=False)
+async def delete_ckan_dataset(request: Request,
+                              tdb_id: str,
+                              client: httpx.AsyncClient = Depends(get_client),
+                              db_session: Session = Depends(get_db_session)):
+    try:
+        ckan_url = get_application_store_by_key(db_session, "ckan_url")
+        ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
+        if ckan_url and ckan_api_key:
+            ckan_dataset = find_ckan_dataset_by_dataset_name(tdb_id, db_session)
+            if ckan_dataset:
+                ckan_url = ckan_url + "/api/3/action/package_delete"
+                headers = {
+                    "Authorization": ckan_api_key,
+                    "Content-Type": "application/json"
+                }
+                data = {
+                    "id": ckan_dataset.ckan_id
+                }
+                r = await client.post(ckan_url, headers=headers, json=data)
+                if r.status_code == 200:
+                    db_session.delete(ckan_dataset)
+                    db_session.commit()
+                    return JSONResponse(content="Unlinked Dataset in CKAN", status_code=200)
+                else:
+                    return JSONResponse(content=r.text, status_code=400)
+            else:
+                return JSONResponse(content="Dataset not found in CKAN", status_code=404)
+        else:
+            return JSONResponse(content=str("CKAN URL or API key not configured"), status_code=424)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return JSONResponse(content=str(e), status_code=400)
 
 # This post request will reload the page
 # Other post requests like query, update, and upload
@@ -444,7 +633,8 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
           include_in_schema=False  # hide this endpoint in Swagger UI (http://localhost/docs)
           )
 async def destroy_dataset(response: Response, request: Request, tdb_id: Annotated[str, Form()], tdb_name: str = "jena",
-                          client: httpx.AsyncClient = Depends(get_client)):
+                          client: httpx.AsyncClient = Depends(get_client),
+                          db_session: Session = Depends(get_db_session)):
     try:
         r = await get_jenaconn(tdb_id).destroy_ds(client)
         print(f"\n\n##########\n{r.status_code = }\n{str(r.content.decode('utf-8')) = }\n##########\n\n")
@@ -452,7 +642,7 @@ async def destroy_dataset(response: Response, request: Request, tdb_id: Annotate
             flash(request,
                   message=f"Dataset <strong>{tdb_id}</strong> deleted",
                   category="success")
-            tdb_id = tdb_name = ""  # set to empty string in order to get back to homepage
+            tdb_name = ""  # set to empty string in order to get back to homepage
         else:
             flash(request,
                   message=r.content.decode("utf-8"),
@@ -467,6 +657,37 @@ async def destroy_dataset(response: Response, request: Request, tdb_id: Annotate
         redirect_url = f"/{tdb_name}/{tdb_id}"
     else:
         redirect_url = "/"
+
+    ckan_dataset = find_ckan_dataset_by_dataset_name(tdb_id, db_session)
+    if ckan_dataset:
+        # Delete dataset from CKAN
+        try:
+            ckan_url = get_application_store_by_key(db_session, "ckan_url")
+            ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
+            if ckan_url and ckan_api_key:
+                ckan_url = ckan_url + "/api/3/action/package_delete"
+                headers = {
+                    "Authorization": ckan_api_key,
+                    "Content-Type": "application/json"
+                }
+                data = {
+                    "id": ckan_dataset.ckan_id
+                }
+                r = await client.post(ckan_url, headers=headers, json=data)
+                if r.status_code == 200:
+                    flash(request,
+                          message=f"Dataset <strong>{tdb_id}</strong> deleted from CKAN",
+                          category="success")
+                else:
+                    flash(request,
+                          message=f"Error while deleting dataset from CKAN: {r.text}",
+                          category="danger")
+            db_session.delete(ckan_dataset)
+            db_session.commit()
+        except Exception as e:
+            flash(request,
+                  message=f"Unexpected error: {e}",
+                  category="danger")
 
     print(f"\n####\n{redirect_url = }\n####\n")
     return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
@@ -948,6 +1169,168 @@ async def admin_backup(response: Response, request: Request, settings: Annotated
                                                      "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
                                                      })
 
+@app.get('/admin/ckan',
+         description="Administration page for ckan",
+         dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+         include_in_schema=False 
+)
+async def admin_ckan(response: Response, request: Request, settings: Annotated[Settings, Depends(get_settings)],
+                   client: httpx.AsyncClient = Depends(get_client)):
+    
+    # check Fuseki triplestore for datasets
+    tdb_ids_jena = None
+    try:
+        tdb_ids_jena = await FusekiConnection.get_all_tdb_ids(client)
+    except Exception as e:
+        print(f"\n####\nFuseki:\nERROR: {str(e)}\n####\n")
+
+    # set variables for navbar
+    name = request.session.get("name", "anonymous")
+    api_key = request.session.get("api_key", "")
+    role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
+        
+
+    if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
+        tdb_ids_jena = [item for item in tdb_ids_jena if
+                        "-mem" not in item and
+                        "_mem" not in item
+                        ]
+
+    return templates.TemplateResponse("admin_ckan.html", {"request": request,
+                                                     "name": name,
+                                                     "tdb_ids_jena": tdb_ids_jena,
+                                                     "api_key": api_key if api_key else "",
+                                                     "api_key_default_valid_days": settings.JWT_DEFAULT_DAYS_VALID,
+                                                     "api_key_valid_to": decode_token(api_key).get("exp") if api_key else "-",
+                                                     "role": role,
+                                                     "user_identifier": request.session.get("user_identifier", ""),
+                                                     "provider": request.session.get("provider", ""),
+                                                     "isAdminRole": role == settings.OIDC_ADMIN_ROLE,
+                                                     "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
+                                                     "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
+                                                     })
+
+@app.get('/admin/ckan/rest/current',
+         description="Get current CKAN configuration",
+         dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+         include_in_schema=False 
+)
+async def admin_ckan_rest_current(response: Response, request: Request, settings: Annotated[Settings, Depends(get_settings)],
+                                  db_session: Session = Depends(get_db_session),
+                                client: httpx.AsyncClient = Depends(get_client)):
+        try:
+            ckan_url = get_application_store_by_key(db_session, "ckan_url")
+            ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
+            ckan_organization_id = get_application_store_by_key(db_session, "ckan_organization_id")
+            ckan_group_ids = json.loads(get_application_store_by_key(db_session, "ckan_group_ids", "[]"))
+            ckan_config = {
+                "ckan_url": ckan_url,
+                "ckan_api_key": ckan_api_key,
+                "ckan_organization_id": ckan_organization_id,
+                "ckan_group_ids": ckan_group_ids
+            }
+            return JSONResponse(content=ckan_config, status_code=200)
+        except Exception as e:
+            print(f"\n####\nCKAN:\nERROR: {str(e)}\n####\n")
+            return JSONResponse(content=str(e), status_code=400)
+        
+@app.post('/admin/ckan/rest/test',
+          description="Test CKAN configuration",
+          dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def admin_ckan_rest_test(request: Request,
+                               settings: Annotated[Settings, Depends(get_settings)],
+                               db_session: Session = Depends(get_db_session),
+                               client: httpx.AsyncClient = Depends(get_client)):
+        data = await request.json()
+        ckanUrl = data.get("ckanUrl", None)
+        ckanApiKey = data.get("ckanApiKey", None)
+        if not ckanUrl or not ckanApiKey or len(ckanUrl) == 0 or len(ckanApiKey) == 0:
+            return JSONResponse(content="CKAN URL and API Key must be set!", status_code=400)
+        
+        if ckanUrl[-1] == "/":
+            ckanUrl = ckanUrl[:-1]
+        try:
+            ckan_req = urllib2.Request(f'{ckanUrl}/api/3', headers={"Authorization": ckanApiKey})
+            urllib2.urlopen(ckan_req)
+        except urllib2.HTTPError as e:
+            return JSONResponse(content=f"HTTP error: {e.code} - {e.reason}", status_code=e.code)
+        except urllib2.URLError as e:
+            return JSONResponse(content=f"URL error: {e.reason}", status_code=400)
+        except ValueError as e:
+            return JSONResponse(content=f"URL error: {e}", status_code=400)
+        ckan_req = urllib2.Request(f'{ckanUrl}/api/3', headers={"Authorization": ckanApiKey})
+        try:
+            responseDict = {}
+            user_ckan_req = urllib2.Request(f'{ckanUrl}/api/3/action/user_show', headers={"Authorization": ckanApiKey})
+            try:    
+                user_response = urllib2.urlopen(user_ckan_req)
+                userRespDict = json.loads(user_response.read())
+                if userRespDict["success"]:
+                    responseDict["user"] = userRespDict.get("result", {}).get("name", "not given")
+                    organization_ckan_req = urllib2.Request(f'{ckanUrl}/api/3/action/organization_list_for_user', headers={"Authorization": ckanApiKey})
+                    try:
+                        organization_response = urllib2.urlopen(organization_ckan_req)
+                        organizationRespDict = json.loads(organization_response.read())
+                        if organizationRespDict["success"]:
+                            organizationList = organizationRespDict.get("result", [])
+                            organizationDictList = []
+                            for organizationDict in organizationList:
+                                organizationDictList.append({"id": organizationDict["id"], "name": organizationDict["title"]})
+                            responseDict["organizations"] = organizationDictList
+                            group_ckan_req = urllib2.Request(f'{ckanUrl}/api/3/action/group_list_authz', headers={"Authorization": ckanApiKey})
+                            try:
+                                group_response = urllib2.urlopen(group_ckan_req)
+                                groupRespDict = json.loads(group_response.read())
+                                if groupRespDict["success"]:
+                                    groupList = groupRespDict.get("result", [])
+                                    groupDictList = []
+                                    for groupDict in groupList:
+                                        groupDictList.append({"id": groupDict["id"], "name": groupDict["title"]})
+                                    responseDict["groups"] = groupDictList
+                                    return JSONResponse(content=responseDict, status_code=200)
+                                else:
+                                    return JSONResponse(content=f"Unknown error getting group information with the given API Key (response is not success)", status_code=400)
+                            except urllib2.HTTPError as e:
+                                return JSONResponse(content=f"Unknown error getting group information with the given API Key", status_code=400)
+                    except urllib2.HTTPError as e:
+                        return JSONResponse(content=f"Unknown error getting organization information with the given API Key (response is not success)", status_code=400)
+                else:    
+                    return JSONResponse(content=f"Unknown error getting user information with the given API Key (response is not success)", status_code=400)
+            except urllib2.HTTPError as e:
+                if e.code == 403:
+                    return JSONResponse(content=f"Given API Key is not valid", status_code=400)
+                else:
+                    return JSONResponse(content=f"Unknown error getting user information with the given API Key", status_code=400)
+        except urllib2.HTTPError as e:
+            return JSONResponse(content=f"Could not reach CKAN API at {ckanUrl}/api/3 (HTTP Error {e.code})", status_code=400)
+        except urllib2.URLError as e:
+            return JSONResponse(content=f"Could not reach CKAN API at {ckanUrl}/api/3", status_code=400)
+
+@app.post("/admin/ckan/rest/save",
+          description="Save CKAN configuration",
+          dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+          include_in_schema=False)
+async def admin_ckan_rest_save(request: Request,
+                               settings: Annotated[Settings, Depends(get_settings)],
+                               db_session: Session = Depends(get_db_session),
+                               client: httpx.AsyncClient = Depends(get_client)):
+        data = await request.json()
+        ckanUrl = data.get("ckanUrl", None)
+        ckanApiKey = data.get("ckanApiKey", None)
+        ckanOrganizationId = data.get("ckanOrganizationId", None)
+        ckanGroupIds = data.get("ckanGroupIds", [])
+        if not ckanUrl or not ckanApiKey or len(ckanUrl) == 0 or len(ckanApiKey) == 0 or not ckanOrganizationId or len(ckanOrganizationId) == 0:
+            return JSONResponse(content="CKAN URL, API Key and Organization ID must be set!", status_code=400)
+        if ckanUrl[-1] == "/":
+            ckanUrl = ckanUrl[:-1]
+        create_or_update_application_store_by(db_session, "ckan_url", ckanUrl)
+        create_or_update_application_store_by(db_session, "ckan_api_key", ckanApiKey)
+        create_or_update_application_store_by(db_session, "ckan_organization_id", ckanOrganizationId)
+        create_or_update_application_store_by(db_session, "ckan_group_ids", json.dumps(ckanGroupIds))
+        return JSONResponse(content="CKAN configuration saved", status_code=200)
+        
+
 @app.get('/admin/users',
          description="Administration page for users",
          dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
@@ -990,6 +1373,7 @@ async def admin_users(response: Response, request: Request, settings: Annotated[
             "client_id": provider.client_id,
             "name": provider.name,
             "enabled": provider.enabled,
+            "new_user_role": provider.new_user_role,
             "identifier_helptext": identifier_helptext
         })
         
@@ -1218,6 +1602,9 @@ async def update_sso_provider_name(request: Request,
             sso_id = request.path_params.get("sso_id")
             data = await request.json()
             name = data.get("name", None)
+            new_user_role = data.get("new_user_role", None)
+            if new_user_role and new_user_role not in settings.OIDC_REQUIRED_ROLES:
+                return JSONResponse(content=f"Role must be one of the given ones!", status_code=400)
             if not name:
                 return JSONResponse(content=f"Name is mandatory!", status_code=400)
             result = get_sso_provider_by_id(sso_id, db_session)
@@ -1227,6 +1614,7 @@ async def update_sso_provider_name(request: Request,
                 if result_exists and result_exists.id != int(sso_id):
                     return JSONResponse(content=f"SSO Provider with name {name} already exists!", status_code=400)
                 result.name = name
+                result.new_user_role = new_user_role
                 db_session.commit()
                 db_session.refresh(result)
                 return JSONResponse(content=f"SSO Provider {name} updated!", status_code=200)

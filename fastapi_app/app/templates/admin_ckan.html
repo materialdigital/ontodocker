@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if isAdminRole %}
+<script>
+    $(document).ready(function () {
+
+        axios.get('/admin/ckan/rest/current')
+            .then(function (response) {
+                console.debug(response)
+                $('#ckanUrl').val(response.data.ckan_url);
+                $('#ckanApiKey').val(response.data.ckan_api_key);
+
+                if (response.data.ckan_url && response.data.ckan_api_key && response.data.ckan_url.length > 0 && response.data.ckan_api_key.length > 0) {
+                    testCkanConnection(function () {
+                        console.debug($('#ckanOrganizations'));
+                        console.debug(response);
+                        console.debug($('#ckanOrganizations option[value="' + response.data.ckan_organization_id + '"]'));
+                        if (response.data.ckan_organization_id && $('#ckanOrganizations option[value="' + response.data.ckan_organization_id + '"]').length > 0) {
+                            $('#ckanOrganizations').val(response.data.ckan_organization_id);
+                        } else {
+                            $('#ckanTestResultError').show();
+                            $('#ckanTestResultErrorText').text("The selected organization is not available any more. Please choose another one.");
+                        }
+                        $('#ckanGroups').val(response.data.ckan_group_ids);
+                    });
+                }
+            })
+            .catch(function (error) {
+                $('#ckanTestResultError').show();
+                $('#ckanTestResultErrorText').text(error.response.data);
+            });
+
+        // Test CKAN connection
+        $('#testCkan').click(function (e) {
+            e.preventDefault();
+            testCkanConnection();
+        });
+
+        $("#saveCkan").click(function (e) {
+            e.preventDefault();
+            axios.post('/admin/ckan/rest/save', {
+                ckanUrl: $('#ckanUrl').val(),
+                ckanApiKey: $('#ckanApiKey').val(),
+                ckanOrganizationId: $('#ckanOrganizations').val(),
+                ckanGroupIds: $('#ckanGroups').val()
+            })
+            .then(function (response) {
+                $('#returnCkanMsgContainer').html('<div class="alert alert-success" role="alert">' + response.data + '</div>');
+                $('#returnCkanMsgContainer').show();
+            })
+            .catch(function (error) {
+                $('#returnCkanMsgContainer').html('<div class="alert alert-danger" role="alert">' + error.response.data + '</div>');
+                $('#returnCkanMsgContainer').show();
+            });
+        });
+
+        $(document).on("change", "#ckanUrl, #ckanApiKey", function () {
+            $("#ckanTestResultSuccess").hide();
+            $("#ckanTestResultError").hide();
+            $("#saveCkan").prop("disabled", true);
+            $("#testCkan").show();
+            $("#ckanInfo").hide();
+        });
+    });
+
+    function testCkanConnection(additionalOnSuccess) {
+        axios.post('/admin/ckan/rest/test', {
+            ckanUrl: $('#ckanUrl').val(),
+            ckanApiKey: $('#ckanApiKey').val()
+        })
+            .then(function (response) {
+                $('#ckanTestResultSuccess').show();
+                $("#ckanTestResultError").hide();
+                $("#saveCkan").prop("disabled", false);
+                $("#testCkan").hide();
+                $('#ckanUsername').text(response.data.user);
+                $('#ckanOrganizations').empty();
+                $('#ckanGroups').empty();
+                $.each(response.data.organizations, function (index, value) {
+                    $('#ckanOrganizations').append($('<option>', {
+                        value: value.id,
+                        text: value.name
+                    }));
+                });
+                $.each(response.data.groups, function (index, value) {
+                    $('#ckanGroups').append($('<option>', {
+                        value: value.id,
+                        text: value.name
+                    }));
+                });
+                $("#ckanInfo").show();
+                if (additionalOnSuccess) {
+                    additionalOnSuccess();
+                }
+            })
+            .catch(function (error) {
+                $("#testCkan").show();
+                $('#ckanTestResultError').show();
+                $('#ckanTestResultErrorText').text(error.response.data);
+            });
+    }
+</script>
+<div class="container-fluid px-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h4 class="mt-3 mb-1">
+                Administration - CKAN Configuration
+            </h4>
+            Here you can configure the connection to a CKAN instance.
+            The SPARQL endpoint URLs of datasets created here can then be published to CKAN by the users.
+            <h6>
+                <i class="fa fa-triangle-exclamation"></i> Attention! Before you change the CKAN configuration, please
+                make sure
+                that the new user/API Key can still access the Datasets!
+                Otherwise you may clear the existing datasets before saving the new configuration
+            </h6>
+            <div id="returnCkanMsgContainer"></div>
+        </div>
+    </div>
+    <hr>
+    <div class="row">
+        <div class="col-12">
+            <div class="mb-3">
+                <label for="ckanUrl" class="form-label fw-bold">CKAN Base-URL</label>
+                <input class="form-control" type="text" id="ckanUrl" required>
+                <short>Example: https://ckan.matolab.org</short>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="mb-3">
+                <label for="ckanApiKey" class="form-label fw-bold">CKAN API-Key</label>
+                <input class="form-control" type="text" id="ckanApiKey" required>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="mb-3">
+                <button id="testCkan" class="btn btn-secondary"><i class="fa-solid fa-wifi"></i> Test
+                    connection</button>
+                <span id="ckanTestResultError" class="ms-2 text-danger" style="display: none;">
+                    <i class="fa-solid fa-times"></i> <span id="ckanTestResultErrorText">Connection failed</span>
+                </span>
+            </div>
+        </div>
+        <div class="col-12" id="ckanInfo" style="display:none;">
+            <div class="mb-3">
+                <span id="ckanTestResultSuccess" class="text-success">
+                    <i class="fa-solid fa-check"></i> Connection successful
+                </span>
+            </div>
+            <div class="mb-3">
+                CKAN username:<br /><span id="ckanUsername"></span>
+            </div>
+            <div class="mb-3">
+                Choose organisation for the dataset creation:<br />
+                <select id="ckanOrganizations" class="form-select">
+                </select>
+                <small>You <b>have to</b> select one of the available organisations where the datasets will be
+                    created</small>
+            </div>
+            <div class="mb-3">
+                Choose optional groups for the dataset creation:<br />
+                <select id="ckanGroups" class="form-select" multiple>
+                </select>
+                <small>You <b>can</b> select one or multiple of the available groups which will be assigned to the
+                    created datasets (optional)</small>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="mb-3">
+                <button id="saveCkan" disabled class="btn btn-primary"><i class="fa-solid fa-save"></i>
+                    Save configuration
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+    <script>
+        showToastMessage('{{ message.category }}', '{{ message.message|safe }}') // use |safe in case of newline \n in string
+    </script>
+    {% endfor %}
+</div>
+
+{% endif %}
+{% endblock %}

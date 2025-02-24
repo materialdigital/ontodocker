@@ -169,6 +169,14 @@
                                     </a>
                                 </nav>
                             </div>
+                            <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
+                                <nav class="sb-sidenav-menu-nested nav">
+                                    <a class="nav-link {{'active' if request.path == '/admin/ckan'}}" href="/admin/ckan">
+                                        <div class="sb-nav-link-icon"><i class="fa-solid fa-network-wired fa-fw"></i></div>
+                                        CKAN Config
+                                    </a>
+                                </nav>
+                            </div>
                         {% endif %}
 
                         <hr class="sb-sidenav-menu-line">
@@ -200,7 +208,7 @@
                                 {% if isAdminRole or isReadWriteRole %}
                                 <form action="/create_dataset" method="POST" id="create_dataset">
                                     <div class="input-group">
-                                        <input type="text" class="form-control" placeholder="dataset name"
+                                        <input type="text" class="form-control" placeholder="Dataset Name"
                                             name="create_tdb_id" required>
                                         <button class="btn btn-primary" id="btnNavbarAdd" name="create" value="jena"
                                             type="submit"><i class="fa-solid fa-plus"></i></button>

@@ -115,13 +115,35 @@ async def auth_keycloak(request: Request, db_session: Session = Depends(get_db_s
             if not user:
                 user = get_user_by_sso_provider_and_user_identifier(sso_provider.id, userinfo.email, db_session)
                 if not user:
-                    return templates.TemplateResponse("403-visitor.html", {"request": request}, status_code=403)
+                    if sso_provider.new_user_role and sso_provider.new_user_role != "":
+                        username = userinfo.preferred_username if userinfo.preferred_username else userinfo.email
+                        user = User(
+                            name=userinfo.name if userinfo.name else username, 
+                            user_identifier=username, 
+                            role=sso_provider.new_user_role, 
+                            sso_provider_id=sso_provider.id
+                        )
+                        db_session.add(user)
+                        db_session.commit()
+                    else:
+                        return templates.TemplateResponse("403-visitor.html", {"request": request}, status_code=403)
             await fill_session_data(request, user, "keycloak", db_session)
         elif sso_provider.type == "orcid":
             userinfo = token.get("userinfo")
             user = get_user_by_sso_provider_and_user_identifier(sso_provider.id, userinfo.sub, db_session)
             if not user:
-                return templates.TemplateResponse("403-visitor.html", {"request": request}, status_code=403)
+                if sso_provider.new_user_role and sso_provider.new_user_role != "":
+                    username = userinfo.sub
+                    user = User(
+                        name=userinfo.given_name if userinfo.given_name else username, 
+                        user_identifier=username, 
+                        role=sso_provider.new_user_role,
+                        sso_provider_id=sso_provider.id
+                    )
+                    db_session.add(user)
+                    db_session.commit()
+                else:
+                    return templates.TemplateResponse("403-visitor.html", {"request": request}, status_code=403)
             await fill_session_data(request, user, "orcid", db_session)
     return RedirectResponse('/')
 
