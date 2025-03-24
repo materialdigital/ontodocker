@@ -112,7 +112,7 @@ async def on_startup():
 
 def migrate_db():
     version = get_db_version_or_init(next(get_db_session()))
-    if version == "0":
+    if version < 1:
         print("Migrating database to version 1")
         # Add new_user_role column to SSOProvider table
         session = next(get_db_session())
@@ -122,6 +122,7 @@ def migrate_db():
         session.execute("UPDATE applicationstore SET value = '1' WHERE key = 'db_version'")
         session.commit()
         session.close()
+        version = 1
         print("Database migrated to version 1")
 
 @app.middleware("http")
@@ -189,9 +190,13 @@ async def homepage(response: Response, request: Request,
     api_key = request.session.get("api_key", "")
     role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
 
-    ownurl = f"{request.url.scheme}://{request.url.hostname}"
-    if request.url.port != 443 and request.url.port != 80:
-        ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+    host = request.headers.get("X-Forwarded-Host", request.url.hostname)
+    port = request.headers.get("X-Forwarded-Port", request.url.port)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+
+    ownurl = f"{scheme}://{host}"
+    if port and port != 443 and port != 80:
+        ownurl = f"{scheme}://{host}:{port}"
         
 
     if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
@@ -308,9 +313,13 @@ async def create_dataset(response: Response, request: Request, create_tdb_id: An
                          ):
     redirect_url = request.headers.get('Referer')  # get the url before redirection
 
-    ownurl = f"{request.url.scheme}://{request.url.hostname}"
-    if request.url.port != 443 and request.url.port != 80:
-        ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+    host = request.headers.get("X-Forwarded-Host", request.url.hostname)
+    port = request.headers.get("X-Forwarded-Port", request.url.port)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+
+    ownurl = f"{scheme}://{host}"
+    if port and port != 443 and port != 80:
+        ownurl = f"{scheme}://{host}:{port}"
 
     # check Fuseki triplestore for datasets
     tdb_ids_jena = None
@@ -391,9 +400,13 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
     api_key = request.session.get("api_key", "")
     role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
 
-    ownurl = f"{request.url.scheme}://{request.url.hostname}"
-    if request.url.port != 443 and request.url.port != 80:
-        ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+    host = request.headers.get("X-Forwarded-Host", request.url.hostname)
+    port = request.headers.get("X-Forwarded-Port", request.url.port)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+
+    ownurl = f"{scheme}://{host}"
+    if port and port != 443 and port != 80:
+        ownurl = f"{scheme}://{host}:{port}"
 
     if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
         tdb_ids_jena = [item for item in tdb_ids_jena if
@@ -429,7 +442,7 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
                                                      "tdb_name": tdb_name,
                                                      "tdb_ids_jena": tdb_ids_jena,
                                                      "name": name,
-                                                    "api_key": api_key if api_key else "",
+                                                     "api_key": api_key if api_key else "",
                                                      "api_key_default_valid_days": settings.JWT_DEFAULT_DAYS_VALID,
                                                      "api_key_valid_to": decode_token(api_key).get("exp") if api_key else "-",
                                                      "ownurl": ownurl,
@@ -441,6 +454,32 @@ async def datasets(response: Response, request: Request, settings: Annotated[Set
                                                      "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
                                                      "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
                                                      })
+
+@app.get("/jena/{tdb_id}/reasoner",
+            description="Get the reasoner of a dataset in the Fuseki Jena triplestore. This endpoint requires authentication and the user must have the maintainer or admin role.",
+            summary="Get reasoner",
+            tags=["Datasets"],
+            dependencies=[Depends(check_auth_or_free_access)],
+            include_in_schema=False  # hide this endpoint in Swagger UI (http://localhost/docs)
+            )
+async def get_reasoner(response: Response, request: Request, tdb_id: str = ""):
+     r = await get_jenaconn(tdb_id).get_reasoner(tdb_id)
+     return r
+
+@app.post("/jena/{tdb_id}/reasoner",
+          description="Set a reasoner on a dataset in the Fuseki Jena triplestore. This endpoint requires authentication and the user must have the maintainer or admin role. ",
+          summary="Set reasoner",
+          tags=["Datasets"],
+          dependencies=[Depends(check_auth_or_free_access), Depends(maintainer_or_admin_role)],
+          include_in_schema=False  # hide this endpoint in Swagger UI (http://localhost/docs)
+          )
+async def set_reasoner(response: Response, request: Request, tdb_id: str = ""):
+    data = await request.json()
+    reasoner = data.get("reasoner", None)
+
+    r = await get_jenaconn(tdb_id).set_reasoner(tdb_id, reasoner)
+    return r
+        
 
 @app.get("/jena/{tdb_id}/ckan",
          description="Check if dataset exists in CKAN.",
@@ -454,6 +493,7 @@ async def get_ckan_dataset(request: Request,
     # Get CKAN dataset by ID
     ckan_url = get_application_store_by_key(db_session, "ckan_url")
     ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
+    ckan_api_format = get_application_store_by_key(db_session, "ckan_api_format", "default")
     if ckan_url and ckan_api_key:
         try:
             ckan_dataset = find_ckan_dataset_by_dataset_name(tdb_id, db_session)
@@ -469,7 +509,11 @@ async def get_ckan_dataset(request: Request,
                 r = await client.post(ckan_url, headers=headers, json=data)
                 result_json = r.json()
                 if r.status_code == 200 and "success" in result_json and result_json["success"]:
-                    return JSONResponse(content=result_json["result"], status_code=200)
+                    resultJson = result_json["result"]
+                    if ckan_api_format == "dcat":
+                        resultJson["author"] = resultJson.get("publisher", [{}])[0].get("name", "")
+                        resultJson["author_email"] = resultJson.get("publisher", [{}])[0].get("email", "")
+                    return JSONResponse(content=resultJson, status_code=200)
                 else:
                     return JSONResponse(content={"exists": False}, status_code=200)
             else:
@@ -490,9 +534,13 @@ async def create_or_update_ckan_dataset(request: Request,
                               client: httpx.AsyncClient = Depends(get_client),
                               db_session: Session = Depends(get_db_session)):
     
-    ownurl = f"{request.url.scheme}://{request.url.hostname}"
-    if request.url.port != 443 and request.url.port != 80:
-        ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+    host = request.headers.get("X-Forwarded-Host", request.url.hostname)
+    port = request.headers.get("X-Forwarded-Port", request.url.port)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+
+    ownurl = f"{scheme}://{host}"
+    if port and port != 443 and port != 80:
+        ownurl = f"{scheme}://{host}:{port}"
 
     data = await request.json()
     dataset_name = data.get("dataset_name", None)
@@ -500,11 +548,15 @@ async def create_or_update_ckan_dataset(request: Request,
     if not dataset_name or not re.match(r"^[a-z0-9_-]{2,100}$", dataset_name):
         return JSONResponse(content="Invalid dataset name. Must be between 2 and 100 characters long and contain only lowercase alphanumeric characters, - and _", status_code=400)
 
+    ckan_publisher_name = data.get("ckan_publisher_name", request.session.get("name", ""))
+    ckan_publisher_email = data.get("ckan_publisher_email", "")
+
     try:
         ckan_url = get_application_store_by_key(db_session, "ckan_url")
         ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
         ckan_organization_id = get_application_store_by_key(db_session, "ckan_organization_id")
         ckan_group_ids = json.loads(get_application_store_by_key(db_session, "ckan_group_ids", "[]"))
+        ckan_api_format = get_application_store_by_key(db_session, "ckan_api_format", "default")
         if ckan_url and ckan_api_key and ckan_organization_id:
             headers = {
                 "Authorization": ckan_api_key,
@@ -514,48 +566,93 @@ async def create_or_update_ckan_dataset(request: Request,
             if not ckan_dataset:
                 ckan_dataset = CkanDataset(dataset_name=tdb_id, user_id=request.session.get("id"), published_timestamp=int(time.time()))
                 ckan_url = ckan_url + "/api/3/action/package_create"
-                data = {
+                postData = {
                     "name": dataset_name,
                     "title": dataset_name,
                     "private": False,
                     "notes": data.get("dataset_description"),
                     "owner_org": ckan_organization_id,
-                    "maintainer": request.session.get("user_identifier", ""),
-                    "author": request.session.get("user_identifier", ""),
+                    "author": ckan_publisher_name,
+                    "author_email": ckan_publisher_email,
                     "groups": [{"id": group_id} for group_id in ckan_group_ids],
                     "resources": [
                         {
                             "name": f"Exploreable dataset with YasGUI at {ownurl}",
                             "url": f"{ownurl}/jena/{tdb_id}",
-                            "description": "Points to the user interface"
+                            "description": "Points to the user interface",
+                            "mimetype": "text/html"
                         },
                         {
                             "name": f"SPARQL API endpoint",
-                            "url": f"{ownurl}/api/v1/jena/{tdb_id}/sparql"
+                            "url": f"{ownurl}/api/v1/jena/{tdb_id}/sparql",
+                            "mimetype": "application/sparql-results+xml",
+                            "format": "sparql"
                         },
                         {
                             "name": f"Data API endpoint",
-                            "url": f"{ownurl}/api/v1/jena/{tdb_id}"
+                            "url": f"{ownurl}/api/v1/jena/{tdb_id}",
+                            "mimetype": "text/turtle"
                         }
                     ],
                     "tags": [{"name": tag} for tag in data.get("dataset_tags", [])]
-                }
-                r = await client.post(ckan_url, headers=headers, json=data)
+                } 
+                if ckan_api_format == "dcat":
+                    postData = {
+                        "name": dataset_name,
+                        "title": dataset_name,
+                        "private": False,
+                        "notes": data.get("dataset_description"),
+                        "owner_org": ckan_organization_id,
+                        "publisher": [{"name": ckan_publisher_name, "email": ckan_publisher_email}],
+                        "groups": [{"id": group_id} for group_id in ckan_group_ids],
+                        "resources": [
+                            {
+                                "name": f"Exploreable dataset with YasGUI at {ownurl}",
+                                "url": f"{ownurl}/jena/{tdb_id}",
+                                "description": "Points to the user interface",
+                                "mimetype": "text/html"
+                            },
+                            {
+                                "name": f"SPARQL API endpoint",
+                                "url": f"{ownurl}/api/v1/jena/{tdb_id}/sparql",
+                                "mimetype": "application/sparql-results+xml",
+                                "format": "sparql"
+                            },
+                            {
+                                "name": f"Data API endpoint",
+                                "url": f"{ownurl}/api/v1/jena/{tdb_id}",
+                                "mimetype": "text/turtle"
+                            }
+                        ],
+                        "tags": [{"name": tag} for tag in data.get("dataset_tags", [])]
+                    }
+                r = await client.post(ckan_url, headers=headers, json=postData)
                 result_json = r.json()
             else:
                 ckan_dataset.published_timestamp = int(time.time())
                 ckan_dataset.user_id = request.session.get("id")
                 ckan_url = ckan_url + "/api/3/action/package_patch"
-                data = {
+                postData = {
                     "id": ckan_dataset.ckan_id,
                     "name": dataset_name,
                     "title": dataset_name,
                     "notes": data.get("dataset_description"),
-                    "maintainer": request.session.get("user_identifier", ""),
+                    "author": ckan_publisher_name,
+                    "author_email": ckan_publisher_email,
                     "tags": [{"name": tag} for tag in data.get("dataset_tags", [])],
                     "groups": [{"id": group_id} for group_id in ckan_group_ids]
                 }
-                r = await client.post(ckan_url, headers=headers, json=data)
+                if ckan_api_format == "dcat":
+                    postData = {
+                        "id": ckan_dataset.ckan_id,
+                        "name": dataset_name,
+                        "title": dataset_name,
+                        "notes": data.get("dataset_description"),
+                        "publisher": [{"name": ckan_publisher_name, "email": ckan_publisher_email}],
+                        "tags": [{"name": tag} for tag in data.get("dataset_tags", [])],
+                        "groups": [{"id": group_id} for group_id in ckan_group_ids]
+                    }
+                r = await client.post(ckan_url, headers=headers, json=postData)
                 result_json = r.json()
             if r.status_code == 200 and "success" in result_json and result_json["success"]:
                 ckan_dataset.ckan_id = result_json["result"]["id"]
@@ -1169,6 +1266,73 @@ async def admin_backup(response: Response, request: Request, settings: Annotated
                                                      "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
                                                      })
 
+@app.get("/admin/fuseki",
+            description="Administration page for Fuseki",
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def admin_fuseki(request: Request,
+                        settings: Annotated[Settings, Depends(get_settings)],
+                        db_session: Session = Depends(get_db_session),
+                        client: httpx.AsyncClient = Depends(get_client)):
+    # check Fuseki triplestore for datasets
+    tdb_ids_jena = None
+    try:
+        tdb_ids_jena = await FusekiConnection.get_all_tdb_ids(client)
+    except Exception as e:
+        print(f"\n####\nFuseki:\nERROR: {str(e)}\n####\n")
+
+    # set variables for navbar
+    name = request.session.get("name", "anonymous")
+    api_key = request.session.get("api_key", "")
+    role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
+        
+
+    if tdb_ids_jena and not role == settings.OIDC_ADMIN_ROLE:
+        tdb_ids_jena = [item for item in tdb_ids_jena if
+                        "-mem" not in item and
+                        "_mem" not in item
+                        ]
+
+    return templates.TemplateResponse("admin_fuseki.html", {"request": request,
+                                                     "name": name,
+                                                     "tdb_ids_jena": tdb_ids_jena,
+                                                     "api_key": api_key if api_key else "",
+                                                     "api_key_default_valid_days": settings.JWT_DEFAULT_DAYS_VALID,
+                                                     "api_key_valid_to": decode_token(api_key).get("exp") if api_key else "-",
+                                                     "role": role,
+                                                     "user_identifier": request.session.get("user_identifier", ""),
+                                                     "provider": request.session.get("provider", ""),
+                                                     "isAdminRole": role == settings.OIDC_ADMIN_ROLE,
+                                                     "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
+                                                     "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE
+                                                     })
+
+@app.get("/admin/fuseki/rest/status")
+async def admin_fuseki_status(request: Request,
+                              settings: Annotated[Settings, Depends(get_settings)],
+                              db_session: Session = Depends(get_db_session),
+                              client: httpx.AsyncClient = Depends(get_client)):
+    r = await FusekiConnection.get_server_status(client)
+    if r.status_code == 200:
+        return JSONResponse(content=r.json(), status_code=200)
+    else:
+        return JSONResponse(content=r.text, status_code=r.status_code)
+
+@app.post("/admin/fuseki/rest/restart",
+            description="Restart Fuseki",
+            dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
+            include_in_schema=False)
+async def admin_fuseki_restart(request: Request,
+                                settings: Annotated[Settings, Depends(get_settings)],
+                                db_session: Session = Depends(get_db_session),
+                                client: httpx.AsyncClient = Depends(get_client)):
+    try:
+        FusekiConnection.restart_fuseki_container()
+        return JSONResponse(content="Fuseki restarting", status_code=200)
+    except Exception as e:
+        print(f"\n####\nFuseki:\nERROR: {str(e)}\n####\n")
+        return JSONResponse(content=str(e), status_code=400)
+
 @app.get('/admin/ckan',
          description="Administration page for ckan",
          dependencies=[Depends(check_auth_or_free_access), Depends(admin_role)],
@@ -1223,11 +1387,13 @@ async def admin_ckan_rest_current(response: Response, request: Request, settings
             ckan_api_key = get_application_store_by_key(db_session, "ckan_api_key")
             ckan_organization_id = get_application_store_by_key(db_session, "ckan_organization_id")
             ckan_group_ids = json.loads(get_application_store_by_key(db_session, "ckan_group_ids", "[]"))
+            ckan_api_format = get_application_store_by_key(db_session, "ckan_api_format", "default")
             ckan_config = {
                 "ckan_url": ckan_url,
                 "ckan_api_key": ckan_api_key,
                 "ckan_organization_id": ckan_organization_id,
-                "ckan_group_ids": ckan_group_ids
+                "ckan_group_ids": ckan_group_ids,
+                "ckan_api_format": ckan_api_format
             }
             return JSONResponse(content=ckan_config, status_code=200)
         except Exception as e:
@@ -1320,6 +1486,7 @@ async def admin_ckan_rest_save(request: Request,
         ckanApiKey = data.get("ckanApiKey", None)
         ckanOrganizationId = data.get("ckanOrganizationId", None)
         ckanGroupIds = data.get("ckanGroupIds", [])
+        ckanApiFormat = data.get("ckanApiFormat", [])
         if not ckanUrl or not ckanApiKey or len(ckanUrl) == 0 or len(ckanApiKey) == 0 or not ckanOrganizationId or len(ckanOrganizationId) == 0:
             return JSONResponse(content="CKAN URL, API Key and Organization ID must be set!", status_code=400)
         if ckanUrl[-1] == "/":
@@ -1328,6 +1495,7 @@ async def admin_ckan_rest_save(request: Request,
         create_or_update_application_store_by(db_session, "ckan_api_key", ckanApiKey)
         create_or_update_application_store_by(db_session, "ckan_organization_id", ckanOrganizationId)
         create_or_update_application_store_by(db_session, "ckan_group_ids", json.dumps(ckanGroupIds))
+        create_or_update_application_store_by(db_session, "ckan_api_format", ckanApiFormat)
         return JSONResponse(content="CKAN configuration saved", status_code=200)
         
 

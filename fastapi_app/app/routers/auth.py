@@ -4,6 +4,7 @@ from fastapi import Depends, APIRouter, status
 from fastapi.requests import Request
 from fastapi.responses import RedirectResponse, Response
 from sqlmodel import Session
+import httpx
 from __init__ import templates
 from urllib.parse import quote
 import sys, os
@@ -11,11 +12,12 @@ from oauth import SSOAuth
 import time
 import bcrypt
 from utils import flash
+from triplestore.jena import get_jenaconn, FusekiConnection
 
 sys.path.append("..")  # Adds higher directory to python modules path.
 from config import get_settings, Settings
 from db import User, get_user_by_sso_provider_and_user_identifier, get_user_by_user_identifier, get_sso_provider_by_id, get_enabled_sso_providers
-from dependencies import get_db_session
+from dependencies import get_db_session, get_client
 
 # Note: when using from ..config import moduleA, I got ImportError: attempted relative import beyond top-level package
 # so the hack here is to use sys.path.append("..")
@@ -43,10 +45,44 @@ async def fill_session_data(request, user, provider, db_session):
             summary="Login",
             include_in_schema=False  # hide this endpoint in Swagger UI (http://localhost/docs)
 )
-async def login(request: Request, db_session: Session = Depends(get_db_session)):
+async def login(request: Request,
+                settings: Annotated[Settings, Depends(get_settings)], 
+                db_session: Session = Depends(get_db_session),
+                client: httpx.AsyncClient = Depends(get_client)):
+
+    tdb_ids_jena = None
+    try:
+        tdb_ids_jena = await FusekiConnection.get_all_tdb_ids(client)
+    except Exception as e:
+        print(f"\n####\nFuseki:\nERROR: {str(e)}\n####\n")
+
+    name = request.session.get("name", "anonymous")
+    role = request.session.get("role", settings.OIDC_ADMIN_ROLE if os.getenv("ANONYMOUS_IS_ADMIN", "false") == "true" else None)
+
+    host = request.headers.get("X-Forwarded-Host", request.url.hostname)
+    port = request.headers.get("X-Forwarded-Port", request.url.port)
+    scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+
+    ownurl = f"{scheme}://{host}"
+    if port and port != 443 and port != 80:
+        ownurl = f"{scheme}://{host}:{port}"
     available_providers = get_enabled_sso_providers(db_session)
     return templates.TemplateResponse("login.html", {"request": request,
-                                                     "available_providers": available_providers})
+                                                     "has_vowl": False,
+                                                     "tdb_id": "",
+                                                     "tdb_name": "jena",
+                                                     "tdb_ids_jena": tdb_ids_jena,
+                                                     "name": name,
+                                                     "ownurl": ownurl,
+                                                     "property_tree": {},
+                                                     "role": role,
+                                                     "user_identifier": request.session.get("user_identifier", ""),
+                                                     "provider": request.session.get("provider", ""),
+                                                     "isAdminRole": role == settings.OIDC_ADMIN_ROLE,
+                                                     "isReadWriteRole": role == settings.OIDC_READWRITE_ROLE,
+                                                     "isReadOnlyRole": not role or role == settings.OIDC_READONLY_ROLE,
+                                                     "available_providers": available_providers,
+                                                     })
 
 @router.post("/login")
 async def login_post(request: Request, db_session: Session = Depends(get_db_session)):

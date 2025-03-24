@@ -25,6 +25,13 @@
                         $('#ckanGroups').val(response.data.ckan_group_ids);
                     });
                 }
+
+                $('#ckanApiFormat').val(response.data.ckan_api_format);
+                if (response.data.ckan_api_format === 'dcat') {
+                    $('#ckanApiFormat').val('dcat');
+                } else {
+                    $('#ckanApiFormat').val('default');
+                }
             })
             .catch(function (error) {
                 $('#ckanTestResultError').show();
@@ -43,7 +50,8 @@
                 ckanUrl: $('#ckanUrl').val(),
                 ckanApiKey: $('#ckanApiKey').val(),
                 ckanOrganizationId: $('#ckanOrganizations').val(),
-                ckanGroupIds: $('#ckanGroups').val()
+                ckanGroupIds: $('#ckanGroups').val(),
+                ckanApiFormat: $('#ckanApiFormat').val()
             })
             .then(function (response) {
                 $('#returnCkanMsgContainer').html('<div class="alert alert-success" role="alert">' + response.data + '</div>');
@@ -164,6 +172,14 @@
                 </select>
                 <small>You <b>can</b> select one or multiple of the available groups which will be assigned to the
                     created datasets (optional)</small>
+            </div>
+            <div class="mb-3">
+                Choose CKAN API-Format:<br />
+                <select id="ckanApiFormat" class="form-select">
+                    <option value="default">Default</option>
+                    <option value="dcat">DCAT</option>
+                </select>
+                <small>The format defines the fields that are filled in CKAN.</small>
             </div>
         </div>
         <div class="col-12">

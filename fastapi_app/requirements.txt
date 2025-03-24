@@ -22,4 +22,17 @@ jinja2
 python-multipart
 debugpy
 bcrypt
+docker
+
+#https://github.com/VisualDataWeb/WebVOWL
+#flaticon
+#fontawesome 6
+#google_font
+#opensans
+#yasgui 4.2
+#bootstrap 5
+#jquery 3.7
+#jquery datatables 1.13
+#axios 1.7
+
 

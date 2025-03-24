@@ -495,8 +495,11 @@ $(document).ready(function () {
 
         const waitingMessage = setInterval(() => console.debug('Still waiting...'), 1000);
 
-        const runningMessage = "<span class='spinner-border spinner-border-sm' role='status' aria-hidden='true'></span>";
+        const runningLongMessage = "<span class='spinner-border spinner-border-sm' role='status' aria-hidden='true'></span> Running query...<br/><br/>It seems it takes some time. The query is still running. Depending on the amount of data or reasoner selection this may take a lot of time!<br/>Wait for completion, the dataset is blocked for further queries anyway.<br/>If you think it is stuck and you cannot query the dataset anymore, you can restart the fuseki server in the admin area.";
+        const runningMessage = "<span class='spinner-border spinner-border-sm' role='status' aria-hidden='true'></span> Running query..."
         showFlashMessage("success", runningMessage, "html");
+
+        longMessageTimeout = window.setTimeout(() => {showFlashMessage("success", runningLongMessage, "html")}, 10000);
 
 
         // disable Query/Update button
@@ -509,6 +512,8 @@ $(document).ready(function () {
                 //     Authorization: 'Bearer your_token_here',
                 // },
             });
+
+            clearTimeout(longMessageTimeout)
 
 
             if (action === "query") {
@@ -607,6 +612,7 @@ $(document).ready(function () {
 
 
         } catch (error) {
+            clearTimeout(longMessageTimeout)
             console.debug("Error occurs:");
             console.error(error);
             let parsed_error;

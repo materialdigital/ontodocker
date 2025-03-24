@@ -47,7 +47,7 @@ def get_db_version_or_init(session):
         app_version = ApplicationStore(key="db_version", value="0")
         session.add(app_version)
         session.commit()
-    return app_version.value
+    return int(app_version.value)
 
 def get_application_store_by_key(session, key, default=None):
     statement = select(ApplicationStore).where(ApplicationStore.key == key)

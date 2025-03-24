@@ -177,6 +177,14 @@
                                     </a>
                                 </nav>
                             </div>
+                            <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
+                                <nav class="sb-sidenav-menu-nested nav">
+                                    <a class="nav-link {{'active' if request.path == '/admin/fuseki'}}" href="/admin/fuseki">
+                                        <div class="sb-nav-link-icon"><i class="fa-solid fa-database fa-fw"></i></div>
+                                        Fuseki Management
+                                    </a>
+                                </nav>
+                            </div>
                         {% endif %}
 
                         <hr class="sb-sidenav-menu-line">

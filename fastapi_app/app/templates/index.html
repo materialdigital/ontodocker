@@ -50,7 +50,9 @@
             const data = {
                 dataset_name: $("#ckan-dataset-name").val(),
                 dataset_description: $("#ckan-dataset-description").val(),
-                dataset_tags: tags
+                dataset_tags: tags,
+                ckan_publisher_name: $("#ckan-dataset-author").val(),
+                ckan_publisher_email: $("#ckan-dataset-author-email").val()
             };
             axios.post('{{ ownurl }}/jena/{{ tdb_id }}/ckan', data)
                 .then(function (response) {
@@ -63,7 +65,7 @@
                 });
         });
 
-        $("#ckan-remove").click(function(e) {
+        $("#ckan-remove").click(function (e) {
             e.preventDefault();
             axios.delete('{{ ownurl }}/jena/{{ tdb_id }}/ckan')
                 .then(function (response) {
@@ -85,6 +87,8 @@
                 $('#ckanPublishText').text('CKAN edit/remove');
                 $("#ckan-dataset-name").val(response.data.name);
                 $("#ckan-dataset-description").val(response.data.notes);
+                $("#ckan-author").val(response.data.author);
+                $("#ckan-author-email").val(response.data.author_email);
                 $("#ckan-remove-container").show();
                 $('#ckan-dataset-tags').empty();
                 response.data.tags.forEach(function (tag) {
@@ -92,10 +96,12 @@
                 });
             })
             .catch(function (error) {
-                if(error.response.status === 404) {
+                if (error.response.status === 404) {
                     $('#ckanPublishText').text('CKAN publish');
                     $("#ckan-dataset-name").val("{{ tdb_id }}");
                     $("#ckan-dataset-description").val("This dataset only publishes a _SPARQL_ endpoint where the data can be queried.");
+                    $("#ckan-author").val("{{ name }}");
+                    $("#ckan-author-email").val("");
                     $("#ckan-remove-container").hide();
                     $('#ckan-dataset-tags').empty();
                 }
@@ -143,6 +149,16 @@
                             <label for="ckan-dataset-description" class="form-labelfw-bold">Dataset Description</label>
                             <textarea class="form-control" id="ckan-dataset-description" rows="10"
                                 required>This dataset only publishes a _SPARQL_ endpoint where the data can be queried.</textarea>
+                        </div>
+                        <!-- CKAN Author name -->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-author" class="form-label fw-bold">Author / Publisher Name</label>
+                            <input class="form-control" type="text" id="ckan-dataset-author" value="{{ name }}"/>
+                        </div>
+                        <!-- CKAN Author Email -->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-author-email" class="form-label fw-bold">Author / Publisher Email</label>
+                            <input class="form-control" type="email" id="ckan-dataset-author-email" />
                         </div>
                         <!-- Add list of tags dynamically with a plus button, tags are key value pairs, so two input tags per row-->
                         <div class="mb-3">
@@ -288,6 +304,110 @@
                 </div>
 
             </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        axios.get("{{ ownurl }}/jena/{{ tdb_id }}/reasoner")
+            .then(function (response) {
+                $("#reasoner").val(response.data);
+                onChangeReasoner();
+            })
+            .catch(function (error) {
+                showToastMessage('danger', error.response.data);
+            });
+        $("#reasoner").change(onChangeReasoner);
+        $("#set_reasoner").click(function () {
+            // Ask if you rally want to set the reasoner
+            if (confirm("!! WARNING !!\n\nSetting a reasoner will cause a Fuseki-Jena restart and all active queries (also of other datasets/users) will be canceled.\n\nIt will take a few seconds until the fuseki is available again.\n\nDo you really want to set the reasoner?")) {
+                axios.post('{{ ownurl }}/jena/{{ tdb_id }}/reasoner', {
+                    reasoner: $("#reasoner").val()
+                })
+                    .then(function (response) {
+                        showToastMessage('success', response.data);
+                    })
+                    .catch(function (error) {
+                        showToastMessage('danger', error.response.data);
+                    });
+            }
+        });
+    });
+
+    function onChangeReasoner() {
+        var reasoner = $("#reasoner").val();
+        var helptext = "";
+        switch (reasoner) {
+            case "TransitiveReasoner":
+                helptext = "A simple “reasoner” used to help with API development.<br/><br/>This reasoner caches a transitive closure of the subClass and subProperty graphs. The generated infGraph allows both the direct and closed versions of these properties to be retrieved. The cache is built when the tbox is bound in but if the final data graph contains additional subProperty/subClass declarations then the cache has to be rebuilt.<br/><br/>The triples in the tbox (if present) will also be included in any query. Any of tbox or data graph are allowed to be null.";
+                break;
+            case "RDFSExptRuleReasoner":
+                helptext = "A full implementation of RDFS reasoning using a hybrid rule system, together with optimized subclass/subproperty closure using the transitive graph caches. Implements the container membership property rules using an optional data scanning hook. Implements datatype range validation.";
+                break;
+            case "OWLFBRuleReasoner":
+                helptext = "A hybrid forward/backward implementation of the OWL closure rules. <br/><b>!! This reasoner can be very slow up to unusable querying if the dataset is large! Only use it, if you are aware of this and only use it on small datasets !!</b>";
+                break;
+            case "OWLMiniFBRuleReasoner":
+                helptext = "Key limitations over the normal OWL configuration are:<br/><ul><li>omits the someValuesFrom => bNode entailments</li><li>avoids any guard clauses which would break the find() contract</li><li>omits inheritance of range implications for XSD datatype ranges</li></ul><b>!! This reasoner can be very slow up to unusable querying if the datasets are large! Only use it, if you are aware of this and only use it on small datasets !!</b>";
+                break;
+            case "OWLMicroFBRuleReasoner":
+                helptext = "This only supports:<br/><ul><li>RDFS entailments</li><li>basic OWL axioms like ObjectProperty subClassOf Property</li><li>intersectionOf, equivalentClass and forward implication of unionOf sufficient for traversal of explicit class hierarchies</li><li>Property axioms (inverseOf, SymmetricProperty, TransitiveProperty, equivalentProperty)</li></ul>";
+                break;
+        }
+        $("#reasoner_helptext").html(helptext);
+    }
+</script>
+<!-- Configuration -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-cog me-1"></i>
+            Configuration
+        </div>
+        <div class="card-body">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-bs-toggle="tab" href="#reasoner_tab">Reasoner</a>
+                </li>
+            </ul>
+            <div class="tab-content" id="nav-tabContent">
+                <div class="tab-pane fade show active" id="reasoner_tab">
+                    <div class="mt-1">
+                        Here you can change the reasoner to your dataset. Applying a new reasoner requires a restart of
+                        the
+                        Fuseki server. All active queries will be canceled, also of other datasets/users.
+                        <br />
+                        Reasoner are only applied to the default graph.
+                    </div>
+                    <!-- Select Reasoner -->
+                    <div class="row g-2 align-items-center mt-1">
+                        <div class="input-group">
+                            <div class="form-floating">
+                                <select class="form-select" id="reasoner" name="reasoner">
+                                    <option value="">No Reasoner</option>
+                                    <option value="TransitiveReasoner">Transitive Reasoner (very fast)</option>
+                                    <option value="RDFSExptRuleReasoner">RDFS Rule Reasoner (fast)</option>
+                                    <option value="OWLMicroFBRuleReasoner">Micro OWL Reasoner (fast)</option>
+                                    <option value="OWLMiniFBRuleReasoner">Mini OWL Reasoner (slow)</option>
+                                    <option value="OWLFBRuleReasoner">Full OWL Reasoner (very slow)</option>
+                                </select>
+                                <label for="reasoner">Reasoner</label>
+                            </div>
+                        </div>
+                        <small>
+                            <div id="reasoner_helptext"></div>
+                        </small>
+                        <button type="button" class="btn btn-primary" id="set_reasoner"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="Set Reasoner">
+                            <i class="fa-solid fa-check"></i>
+                            <span class="ms-1">Set Reasoner</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
@@ -527,7 +647,7 @@ where the columns IRI and Label are searchable
                 <div class="input-group mb-3">
                     <div class="form-floating">
                         <iframe style="height:700px;width:100%;" id="webvowl_iframe"
-                            data-src="{{ url_for('static', path='vowl/index.html?tdb_id='+tdb_id ) }}"
+                            data-src="{{ ownurl }}/static/vowl/index.html?tdb_id={{ tdb_id }}"
                             frameborder="0"></iframe>
                     </div>
                 </div>

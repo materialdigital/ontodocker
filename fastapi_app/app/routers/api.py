@@ -64,9 +64,13 @@ async def ds_all(request: Request,
                      If the request is not allowed, returns a JSON response with a 403 status code.
     """
     if allowed:
-        ownurl = f"{request.url.scheme}://{request.url.hostname}"
-        if request.url.port != 443 and request.url.port != 80:
-            ownurl = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+        host = request.headers.get("X-Forwarded-Host", request.url.hostname)
+        port = request.headers.get("X-Forwarded-Port", request.url.port)
+        scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+
+        ownurl = f"{scheme}://{host}"
+        if port and port != 443 and port != 80:
+            ownurl = f"{scheme}://{host}:{port}"
         endpoint_list = [f"{ownurl}/api/jena/{fid}/sparql" for fid in await FusekiConnection.get_all_tdb_ids(client)]
         return JSONResponse(content=endpoint_list)
     return JSONResponse(content=str("Minimum readonly API-Key required"), status_code=403)

@@ -7,6 +7,12 @@ import sys
 from functools import lru_cache
 from typing import Optional, List
 import jpype
+import hashlib
+import subprocess
+import docker
+
+from rdflib import Graph, Namespace, URIRef, BNode
+from rdflib.namespace import RDF, RDFS
 
 import requests
 from fastapi.responses import JSONResponse
@@ -22,6 +28,13 @@ filename = os.path.basename(__file__)
 filedir = os.path.dirname(os.path.realpath(__file__)) + "/"
 var_dir = filedir + "var/"
 
+reasoner_urls = {
+    "TransitiveReasoner": "http://jena.hpl.hp.com/2003/TransitiveReasoner",
+    "RDFSExptRuleReasoner": "http://jena.hpl.hp.com/2003/RDFSExptRuleReasoner",
+    "OWLFBRuleReasoner": "http://jena.hpl.hp.com/2003/OWLFBRuleReasoner",
+    "OWLMiniFBRuleReasoner": "http://jena.hpl.hp.com/2003/OWLMiniFBRuleReasoner",
+    "OWLMicroFBRuleReasoner": "http://jena.hpl.hp.com/2003/OWLMicroFBRuleReasoner"
+}
 
 class FusekiConnection():
     _url = f'http://fuseki:3030'
@@ -55,10 +68,9 @@ class FusekiConnection():
             lst = json.loads(rcontent).get("datasets", {})
             tbds = []
             for l in lst:
-                tbds.append(
-                    l["ds.name"][1:] if l["ds.name"][0] == "/" else l["ds.name"]
-                )  # cut of leading backslash
-
+                tdb_name = l["ds.name"][1:] if l["ds.name"][0] == "/" else l["ds.name"]
+                if tdb_name != "ds":
+                    tbds.append(tdb_name)  # cut of leading backslash
             return tbds
         else:
             # print(f"\n###{r.text = }\n###\n")
@@ -66,9 +78,107 @@ class FusekiConnection():
             return None
 
     async def create_ds(self, client):
+        await self.set_reasoner("test2", "http://jena.hpl.hp.com/2003/OWLMiniFBRuleReasoner")
+        # await self.set_reasoner("test2", "")
         # https://stackoverflow.com/q/42421915
         return await client.post(f'{self._url}/$/datasets', params={"dbName": self.tdb_id, "dbType": "tdb2"},
                                  headers=FusekiConnection._header)
+    
+    async def get_reasoner(self, tdb_id):
+        # Load the existing TTL file
+        g = Graph()
+        g.parse(f"/data/fuseki/configuration/{tdb_id}.ttl", format="turtle")
+
+        # Define namespaces
+        base = Namespace("http://base/#")
+        ja = Namespace("http://jena.hpl.hp.com/2005/11/Assembler#")
+
+        # Find the blank node used in the `ja:reasoner` property
+        for s, p, o in g.triples((base.model_inf, ja.reasoner, None)):
+            if isinstance(o, BNode):
+                for s2, p2, o2 in g.triples((o, ja.reasonerURL, None)):
+                    reasoner_url = str(o2)
+                    reasoner = [key for key, value in reasoner_urls.items() if value == reasoner_url]
+                    if len(reasoner) > 0:
+                        return reasoner[0]
+                    return str(o2)
+        return None
+    
+    async def set_reasoner(self, tdb_id, reasoner):
+
+        if reasoner not in reasoner_urls and reasoner != "":
+            return JSONResponse(content="Invalid reasoner", status_code=400)
+        
+        if reasoner == "":
+            reasoner_url = None
+        else:
+            reasoner_url = reasoner_urls[reasoner]
+
+        # Load the existing TTL file
+        g = Graph()
+        g.parse(f"/data/fuseki/configuration/{tdb_id}.ttl", format="turtle")
+
+        # Define namespaces
+        base = Namespace("http://base/#")
+        fuseki = Namespace("http://jena.apache.org/fuseki#")
+        ja = Namespace("http://jena.hpl.hp.com/2005/11/Assembler#")
+        tdb2 = Namespace("http://jena.apache.org/2016/tdb#")
+
+        # Revert the dataset for :service_tdb_all
+        g.set((base.service_tdb_all, fuseki.dataset, base.tdb_dataset_readwrite))
+
+        # Find the blank node used in the `ja:reasoner` property
+        for s, p, o in g.triples((base.model_inf, ja.reasoner, None)):
+            if isinstance(o, BNode):  # Check if the object is a blank node
+                g.remove((o, None, None))
+                break
+
+        # Remove the added triples
+        g.remove((base.inf_dataset, None, None))
+        g.remove((base.model_inf, None, None))
+        g.remove((base.tdbGraph, None, None))
+
+        if reasoner_url:
+            # Update the dataset for :service_tdb_all
+            g.set((base.service_tdb_all, fuseki.dataset, base.inf_dataset))
+
+            # Add new triples
+            g.add((base.inf_dataset, RDF.type, ja.RDFDataset))
+            g.add((base.inf_dataset, ja.defaultGraph, base.model_inf))
+
+            reasoner_blank_node = BNode()
+            g.add((base.model_inf, RDF.type, ja.InfModel))
+            g.add((base.model_inf, ja.baseModel, base.tdbGraph))
+            g.add((base.model_inf, ja.reasoner, reasoner_blank_node))
+            g.add((reasoner_blank_node, ja.reasonerURL, URIRef(reasoner_url)))
+
+            g.add((base.tdbGraph, RDF.type, tdb2.GraphTDB))
+            g.add((base.tdbGraph, tdb2.dataset, base.tdb_dataset_readwrite))
+
+        # Save the updated graph back to the file
+        g.serialize(destination=f"/data/fuseki/configuration/{tdb_id}.ttl", format="turtle")
+
+        # Restart Fuseki
+        self.restart_fuseki_container()
+        return JSONResponse(content="Reasoner set, Fuseki restarting", status_code=200)
+
+    @staticmethod
+    def restart_fuseki_container():
+        container_name = "fuseki"
+        # Docker-Client initialisieren
+        client = docker.from_env()
+
+        try:
+            # Container anhand des Namens finden
+            container = client.containers.get(container_name)
+
+            # Container neu starten
+            container.restart()
+            print(f"Container '{container_name}' wurde erfolgreich neu gestartet.")
+        except docker.errors.NotFound:
+            print(f"Container '{container_name}' wurde nicht gefunden.")
+        except docker.errors.APIError as e:
+            print(f"Fehler beim Neustarten des Containers: {e}")
 
     async def destroy_ds(self, client):
         return await client.delete(f'{self._url}/$/datasets/{self.tdb_id}', headers=FusekiConnection._header)
