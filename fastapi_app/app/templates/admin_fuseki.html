@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if isAdminRole %}
+<script>
+    $(document).ready(function () {
+        reloadServerState();
+        $("#restartFuseki").click(function (e) {
+            e.preventDefault();
+            if (confirm("Do you really want to restart the Fuseki server?\n\nIt will take a few seconds to restart.\n\nAll active queries will be canceled.")) {
+                axios.post('/admin/fuseki/rest/restart')
+                    .then(function (response) {
+                        $('#returnFusekiMsgContainer').html('<div class="alert alert-success" role="alert">' + response.data + '</div>');
+                        $('#returnFusekiMsgContainer').show();
+                        reloadServerState();
+                    })
+                    .catch(function (error) {
+                        $('#returnFusekiMsgContainer').html('<div class="alert alert-danger" role="alert">' + error.response.data + '</div>');
+                        $('#returnFusekiMsgContainer').show();
+                    });
+            }
+        });
+    });
+    function reloadServerState() {
+        $("#fusekiVersion").text("Loading...");
+        $("#fusekiStartTime").text("Loading...");
+        $("#fusekiUptime").text("Loading...");
+        window.setTimeout(() => {
+            axios.get("/admin/fuseki/rest/status")
+                .then(function (response) {
+                    console.debug(response)
+                    // $('#fusekiStatus').text(response.data);
+                    $('#fusekiVersion').text(response.data.version);
+                    if (response.data.startDateTime) {
+                        var date = new Date(response.data.startDateTime);
+                        $('#fusekiStartTime').text(date.toLocaleString());
+                    } else {
+                        $('#fusekiStartTime').text("Error parsing time");
+                    }
+                    $('#fusekiUptime').text(response.data.uptime);
+                })
+                .catch(function (error) {
+                    $("#fusekiVersion").text("Error");
+                    $("#fusekiStartTime").text("Error");
+                    $("#fusekiUptime").text("Error");
+                }
+                )
+        }, 8000);
+    }
+</script>
+<div class="container-fluid px-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h4 class="mt-3 mb-1">
+                Administration - Fuseki Management
+            </h4>
+            Here you can manage the connection to the fuseki.
+            <div id="returnFusekiMsgContainer"></div>
+        </div>
+    </div>
+    <hr>
+    <h5>Status</h5>
+    <div class="row">
+        <div class="col-12">
+            <div id="fusekiStatus">
+                Version: <span id="fusekiVersion">Loading...</span>
+                <br />
+                Server-Start-Time: <span id="fusekiStartTime">Loading...</span>
+                <br />
+                Uptime (seconds): <span id="fusekiUptime">Loading...</span>
+            </div>
+            <button class="btn btn-primary mt-3" id="reloadServerState" onclick="reloadServerState()"><i
+                    class="fa fa-sync"></i> Refresh state</button>
+        </div>
+    </div>
+    <hr>
+    <div class="row">
+        <div class="col-12">
+            If the fuseki server is not responding or a dataset is blocked (not loading), you can try to restart the
+            fuseki by clicking the button below.
+            <br /><button class="btn btn-primary mt-3" id="restartFuseki"><i class="fa fa-power-off"></i> Restart
+                Fuseki</button>
+        </div>
+    </div>
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+    <script>
+        showToastMessage('{{ message.category }}', '{{ message.message|safe }}') // use |safe in case of newline \n in string
+    </script>
+    {% endfor %}
+</div>
+
+{% endif %}
+{% endblock %}

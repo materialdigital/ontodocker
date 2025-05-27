@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if isAdminRole %}
+<div class="container-fluid px-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h4 class="mt-3 mb-1">
+                Administration - User Management
+            </h4>
+            <div id="returnUsersMsgContainer"></div>
+        </div>
+    </div>
+    <hr>
+    <div class="row">
+        <div class="col-md-12">
+            <h6>Add new user</h6>
+        </div>
+        <div class="col-12">
+            <div class="row">
+                <div class="col-3">
+                    <input type="text" id="newUserName" class="form-control" placeholder="Name" required />
+                    <i class="fa-solid fa-circle-question" data-toggle="tooltip" data-placement="top" title="The real name of the user"></i>
+                </div>
+                <div class="col-3">
+                    <select id="newUserSSOProvider" class="form-select">
+                        <option value="" selected disabled>Select SSO Provider</option>
+                        <option value="local" data-available-identifier-text="Login">No SSO / Local User</option>
+                        {% for available_provider in available_providers %}
+                        {% if available_provider.enabled %}
+                        <option value="{{ available_provider.id }}"
+                            data-available-identifier-text="{{ available_provider.identifier_helptext }}">{{
+                            available_provider.name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <i class="fa-solid fa-circle-question" data-toggle="tooltip" data-placement="top" title="Select either an enabled and existing SSO Provider or choose 'Local User' for a username/password authentication directly in ontodocker."></i>
+                </div>
+                <div class="col-3">
+                    <input type="text" id="newUserIdentifier" disabled class="form-control"
+                        placeholder="Please choose SSO Provider" required />
+                    <small id="userIdentifierFieldDescription" class="form-text text-muted">&nbsp;</small>
+                    <i class="fa-solid fa-circle-question" data-toggle="tooltip" data-placement="top" title="This is the identifier in the SSO Provider or if 'Local User' is selected the username for the login (where also a password field is available for setting the user password, which must be at least 8 characters long)."></i>
+                    <input type="password" id="newUserPassword" class="form-control mt-2" placeholder="Passwort"
+                        style="display:none;" />
+                </div>
+                <div class="col-3">
+                    <select id="newUserRole" class="form-select" disabled required>
+                        <option value="" selected disabled>Select Role</option>
+                        <option value="ro">Read Only</option>
+                        <option value="rw">Read / Write</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <i class="fa-solid fa-circle-question" data-toggle="tooltip" data-placement="top" title="You can selected between roles Admin (full access), Read / Write (full access, excluding Administration), Read Only (Only Read access to the datasets, no modify allowed)"></i>
+                </div>
+            </div>
+            <button type="button" id="newUserBtn" class="btn btn-primary mt-3">
+                <i class="fa-solid fa-save"></i> Save new user
+            </button>
+        </div>
+    </div>
+    <hr>
+    <table id="table_query" class="table order-column table-bordered table-hover nowrap">
+        <thead>
+            <th>Name</th>
+            <th>SSO Provider</th>
+            <th>User Identifier</th>
+            <th>Role</th>
+            <th>Last Login</th>
+            <th>Actions</th>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr class="userRow" data-userid="{{ user.id }}">
+                <td>
+                    <input type="text" class="form-control editUserName editUser" value="{{ user.name }}"
+                        style="display:none;" />
+                    <i class="fa-solid fa-circle-question editUser" style="display:none;" data-toggle="tooltip" data-placement="top" title="The real name of the user"></i>
+                    <span class="editUserHide userName">{{ user.name }}</span>
+                </td>
+                <td>
+                    <select class="form-control editUserSSOProvider editUser" style="display:none;">
+                        <option value="local" data-available-identifier-text="Login" {% if user.sso_provider_id=='local'
+                            %}selected{% endif %}>No SSO / Local User</option>
+                        {% for available_provider in available_providers %}
+                        <option value="{{ available_provider.id }}"
+                            data-available-identifier-text="{{ available_provider.identifier_helptext }}" {% if
+                            user.sso_provider_id==available_provider.id %}selected{% endif %}>{{
+                            available_provider.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="editUserHide ssoProviderName">
+                        {% for available_provider in available_providers %}
+                        {% if user.sso_provider_id == available_provider.id %}
+                        {{ available_provider.name }}
+                        {% endif %}
+                        {% endfor %}
+                    </span>
+                    <i class="fa-solid fa-circle-question editUser" style="display:none;" data-toggle="tooltip" data-placement="top" title="Select either an enabled and existing SSO Provider or choose 'Local User' for a username/password authentication directly in ontodocker."></i>
+                </td>
+                <td>
+                    <div class="editUser" style="display:none;">
+                        <input type="text" class="form-control editUserIdentifier" value="{{ user.user_identifier }}" />
+                        <small class="form-text text-muted" id="editUserIdentifierHelptext">
+                            {% for available_provider in available_providers %}
+                            {% if user.sso_provider_id == available_provider.id %}
+                            {{ available_provider.identifier_helptext }}
+                            {% endif %}
+                            {% endfor %}
+                        </small>
+                        <i class="fa-solid fa-circle-question editUser" style="display:none;" data-toggle="tooltip" data-placement="top" title="This is the identifier in the SSO Provider or if 'Local User' is selected the username for the login (where also a password field is available for setting the user password, which must be at least 8 characters long)."></i>
+                        <div class="editUserPasswordContainer" style="display:none">
+                            <input type="password" placeholder="Password" class="form-control editUserPassword mt-2" />
+                            <small class="form-text text-muted">New password or blank to keep the old</small>
+                        </div>
+                    </div>
+                    <span class="editUserHide userIdentifier">{{ user.user_identifier }}</span>
+                </td>
+                <td>
+                    <select class="form-control editUserRole editUser" class="form-select" style="display:none;">
+                        <option value="ro" {% if user.role=='ro' %} selected {% endif %}>Read Only</option>
+                        <option value="rw" {% if user.role=='rw' %} selected {% endif %}>Read / Write</option>
+                        <option value="admin" {% if user.role=='admin' %} selected {% endif %}>Admin</option>
+                    </select>
+                    <i class="fa-solid fa-circle-question editUser" style="display:none;" data-toggle="tooltip" data-placement="top" title="You can selected between roles Admin (full access), Read / Write (full access, excluding Administration), Read Only (Only Read access to the datasets, no modify allowed)"></i>
+                    <span class="editUserHide userRole">
+                        {% if user.role=='ro' %}
+                        Read Only
+                        {% elif user.role=='rw' %}
+                        Read / Write
+                        {% elif user.role=='admin' %}
+                        Admin
+                        {% endif %}
+                    </span>
+                </td>
+                <td>{{ user.last_login_time }}</td>
+                <td>
+                    <!-- Edit Button -->
+                    <button type="button" class="btn btn-primary btn-sm editUserBtn editUserHide">
+                        <i class="fa-solid fa-edit"></i>
+                    </button>
+                    <!-- Save Button -->
+                    <button type="button" class="btn btn-primary btn-sm saveUserBtn" style="display:none;">
+                        <i class="fa-solid fa-save"></i>
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm deleteUserBtn">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <hr>
+    <h4>SSO Provider</h4>
+    <table id="table_sso_provider" class="table order-column table-bordered table-hover nowrap">
+        <thead>
+            <th>Name</th>
+            <th>Client-ID</th>
+            <th>Enabled</th>
+            <th>User Role of unkown Users</th>
+            <th>Actions</th>
+        </thead>
+        <tbody>
+            {% for provider in available_providers %}
+            <tr class="ssoProviderRow" data-providerid="{{ provider.id }}">
+                <td>
+                    <span class="editSSOProviderHide ssoProviderName">{{ provider.name }}</span>
+                    <input type="text" class="form-control editSSOProviderName editSSOProvider" value="{{ provider.name }}"
+                        style="display:none;" />
+                </td>
+                <td>{{ provider.client_id }}</td>
+                <td>
+                    <div class="form-check
+                        form-switch">
+                        <input class="form-check-input ssoProviderEnabledSwitch" type="checkbox" data-providerid="{{ provider.id }}" {% if provider.enabled
+                            %} checked {% endif %}>
+                    </div>
+                </td>
+                <td>
+                    <select class="form-select editSSOProviderUserRole editSSOProvider" style="display:none;">
+                        <option value="">No role/No automatic user creation</option>
+                        <option value="ro" {% if provider.new_user_role=='ro' %} selected {% endif %}>Read Only</option>
+                        <option value="rw" {% if provider.new_user_role=='rw' %} selected {% endif %}>Read / Write</option>
+                        <option value="admin" {% if provider.new_user_role=='admin' %} selected {% endif %}>Admin</option>
+                    </select>
+                    <span class="editSSOProviderHide ssoProviderUserRole">
+                        {% if provider.new_user_role=='ro' %}
+                        Read Only
+                        {% elif provider.new_user_role=='rw' %}
+                        Read / Write
+                        {% elif provider.new_user_role=='admin' %}
+                        Admin
+                        {% else %}
+                        No role/No automatic user creation
+                        {% endif %}
+                    </span>
+                </td>
+                <td>
+                    <button type="button" class="btn btn-primary btn-sm editSSOProviderBtn editSSOProviderHide">
+                        <i class="fa-solid fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm saveSSOProviderBtn"
+                        style="display:none;">
+                        <i class="fa-solid fa-save"></i>
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm deleteSSOProviderBtn"
+                        data-providerid="{{ provider.id }}">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div id="returnSsoProviderMsgContainer"></div>
+    <hr>
+    <button type="button" id="addKeycloakProvider" class="btn btn-primary"
+        onClick="$('#keycloakForm').show();$('#orcidForm').hide();">
+        <i class="fa-solid fa-plus"></i> Add new Keycloak Provider
+    </button>
+    <button type="button" id="addOrcIdProvider" class="btn btn-primary"
+        onClick="$('#orcidForm').show();$('#keycloakForm').hide();">
+        <i class="fa-solid fa-plus"></i> Add new ORC-ID Provider
+    </button>
+    <div class="row" id="keycloakForm" style="display:none;">
+
+        <div class="col-md-12">
+            <hr>
+            <h6>Keycloak</h6>
+        </div>
+        <div class="col-12">
+            <div class="row">
+                <div class="col-2">
+                    <input type="text" id="keycloak_name" class="form-control" placeholder="Name" required />
+                    <small class="form-text text-muted">Name</small>
+                </div>
+                <div class="col-2">
+                    <input type="text" id="keycloak_client_id" class="form-control" placeholder="Client ID" required />
+                    <small class="form-text text-muted">Client ID</small>
+                </div>
+                <div class="col-2">
+                    <input type="text" id="keycloak_client_secret" class="form-control" placeholder="Client Secret"
+                        required />
+                    <small class="form-text text-muted">Client Secret</small>
+                </div>
+                <div class="col-3">
+                    <input type="text" id="keycloak_server_metadata_url" class="form-control" placeholder="Metadata URL"
+                        required />
+                    <small class="form-text text-muted">Metadata URL (.well-known)</small>
+                </div>
+                <div class="col-md-1">
+                    <select class="form-select" id="keycloak_new_user_role">
+                        <option value="">No role/No automatic user creation</option>
+                        <option value="ro" {% if provider.new_user_role=='ro' %} selected {% endif %}>Read Only</option>
+                        <option value="rw" {% if provider.new_user_role=='rw' %} selected {% endif %}>Read / Write</option>
+                        <option value="admin" {% if provider.new_user_role=='admin' %} selected {% endif %}>Admin</option>
+                    </select>
+                </div>
+                <div class="col-1 form-check form-switch ms-2 mt-2">
+                    <label class="form-check-label" for="keycloak_enabled">Enabled</label>
+                    <input class="form-check-input" type="checkbox" id="keycloak_enabled" checked>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12">
+            <button type="button" id="saveKeycloakProviderBtn" class="btn btn-primary mt-3">
+                <i class="fa-solid fa-save"></i> Save new Keycloak Provider
+            </button>
+        </div>
+    </div>
+    <div class="row" id="orcidForm" style="display:none;">
+
+        <div class="col-md-12">
+            <hr>
+            <h6>ORC-ID</h6>
+        </div>
+        <div class="col-12">
+            <div class="row">
+
+                <div class="col-2">
+                    <input type="text" id="orcid_name" class="form-control" placeholder="Name" required />
+                    <small class="form-text text-muted">Name</small>
+                </div>
+                <div class="col-2">
+                    <input type="text" id="orcid_client_id" class="form-control" placeholder="Client ID" required />
+                    <small class="form-text text-muted">Client ID</small>
+                </div>
+                <div class="col-2">
+                    <input type="text" id="orcid_client_secret" class="form-control" placeholder="Client Secret"
+                        required />
+                    <small class="form-text text-muted">Client Secret</small>
+                </div>
+                <div class="col-3">
+                    <input type="text" id="orcid_server_metadata_url" class="form-control" placeholder="Metadata URL"
+                        required />
+                    <small class="form-text text-muted">Metadata URL (.well-known)</small>
+                </div>
+                <div class="col-md-1">
+                    <select id="orcid_new_user_role" class="form-select">
+                        <option value="">No role/No automatic user creation</option>
+                        <option value="ro">Read Only</option>
+                        <option value="rw">Read / Write</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <small class="form-text text-muted">User Role of unknown users</small>
+                </div>
+                <div class="col-1 form-check form-switch ms-2 mt-2">
+                    <label class="form-check-label" for="orcid_enabled">Enabled</label>
+                    <input class="form-check-input" type="checkbox" id="orcid_enabled" checked>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12">
+            <button type="button" id="saveOrcIdProviderBtn" class="btn btn-primary mt-3">
+                <i class="fa-solid fa-save"></i> Save new ORC-ID Provider
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}

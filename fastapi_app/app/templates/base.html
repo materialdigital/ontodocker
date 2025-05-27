@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Ontodocker Web GUI</title>
+    <link href="../static/favicon.ico" rel="icon" />
+
+    <!-- Bootstrap Style-->
+    <link href="../static/css/bootstrap-5.3.3.min.css" rel="stylesheet">
+
+    <!-- Bundle Datatables styles-->
+    <link href="../static/css/datatables.min.css" rel="stylesheet">
+
+    <!-- Font Awesome Style-->
+    <link rel="stylesheet" href="../static/css/fontawesome-6.5.2/brands.min.css" />
+    <link rel="stylesheet" href="../static/css/fontawesome-6.5.2/regular.min.css" />
+    <link rel="stylesheet" href="../static/css/fontawesome-6.5.2/solid.min.css" />
+    <link rel="stylesheet" href="../static/css/fontawesome-6.5.2/fontawesome.min.css" />
+
+    <!--Flaticon icon-->
+    <link href="../static/css/flaticon/uicons-bold-rounded.min.css?v=1" rel="stylesheet" />
+    <link href="../static/css/flaticon/uicons-thin-rounded.min.css?v=1" rel="stylesheet" />
+    <link href="../static/css/flaticon/uicons-regular-rounded.min.css?v=1" rel="stylesheet" />
+    <link href="../static/css/flaticon/uicons-solid-rounded.min.css?v=1" rel="stylesheet" />
+
+
+    <link href="../static/css/styles.min.css?v=1" rel="stylesheet" />
+    <link href="../static/css/custom.min.css?v=1" rel="stylesheet" />
+
+    <!-- Bootstrap Bundle (popper.js included)-->
+    <script src="../static/js/bootstrap-bundle-5.3.3.min.js"></script>
+
+    <!-- JQuery-->
+    <script src="../static/js/jquery-3.7.1.min.js"></script>
+
+    <!-- DataTables Bundle (partial)-->
+    <script src="../static/js/datatables.min.js"></script>
+
+    <!--Axios HTTP Requests-->
+    <script src="../static/js/axios-1.7.2.min.js"></script>
+    <script src="../static/js/axios_tasks.js?v="></script>
+
+    <script src="../static/js/utils.js?v="></script>
+
+
+    {% block style %}
+    {% endblock %}
+
+</head>
+
+<body class="sb-nav-fixed">
+
+    <nav class="sb-topnav navbar navbar-expand fh-fixedHeader">
+        <a class="navbar-brand text-center fw-semibold" href="/">Ontodocker</a>
+
+        <!-- Sidebar Toggle-->
+        <button type="button" class="btn border-0 me-4 me-sm-0" id="sidebarToggle" data-bs-toggle="tooltip"
+            data-bs-custom-class="custom-tooltip" data-bs-placement="bottom" title="Toggle sidebar">
+            <span class="material-symbols-outlined align-middle" style="color: #4F525C;">dock_to_right</span>
+        </button>
+
+        <!-- Navbar-->
+        <ul class="navbar-nav ms-auto me-1 align-items-center">
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle d-md-none" id="navbarDropdown" href="#" role="button"
+                    data-bs-toggle="dropdown" aria-expanded="false"><i class="fa-solid fa-user"></i>
+                </a>
+                <a class="nav-link {% if role is defined and role[0] is defined and name != 'anonymous' %}dropdown-toggle{% else %}pe-none{% endif %} d-none d-md-block"
+                    id="navbarDropdown2" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"><i
+                        class="fa-solid fa-user"></i><span class="m-1 fw-semibold">{{ name }}{% if role is defined and
+                        role[0] is defined and name != "anonymous" %} | {{ user_identifier }} ({{ provider }}){% endif %}</span>
+                </a>
+                {% if role is defined and role[0] is defined and name != "anonymous" %}
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                    {% if provider == 'Local' %}
+                    <button class="dropdown-item" id="password_change_button" type="button"
+                        onclick="$('#passwordChangeModal').modal('toggle')"><i class="fa-solid fa-key fa-fw"></i>
+                        Change password
+                    </button>
+                    {% endif %}
+                    <button class="dropdown-item" id="api_key_button" type="button"
+                        onclick="$('#apiKeyModal').modal('toggle')"><i class="fa-solid fa-key fa-fw"></i>
+                        API Key
+                    </button>
+                    <li>
+                        <hr class="dropdown-divider" />
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="/logout"><i
+                                class="fa-solid fa-arrow-right-from-bracket fa-fw"></i>
+                            Sign out
+                        </a>
+                    </li>
+                </ul>
+                {% endif %}
+            </li>
+            {% if role is not defined or role[0] is not defined or name == "anonymous" %}
+            <li class="nav-item">
+                <a href="/login" class="nav-link ">Login</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    <div id="layoutSidenav">
+        <div id="layoutSidenav_nav">
+            <nav class="sb-sidenav accordion sb-sidenav-light" id="sidenavAccordion">
+                <div class="sb-sidenav-menu">
+                    <script>
+                        (function () {
+                            let menuTimeout = null;
+                            if (Boolean(localStorage.getItem('sidebar-toggle-collapsed'))) {
+                                const body = document.getElementsByTagName('body')[0];
+                                body.className = body.className + ' sb-sidenav-toggled';
+                            }
+
+                            window.addEventListener("mousemove", (e) => {
+                                // Check if the sidebar should be collapsed based on localStorage
+                                const isSidebarCollapsed = Boolean(localStorage.getItem('sidebar-toggle-collapsed'));
+
+                                if (isSidebarCollapsed) {
+                                    mouseMoveHandler(e);
+                                }
+                            });
+
+                            function mouseMoveHandler(e) {
+                                const menu = document.querySelector('.sb-sidenav-menu');
+                                if (e.pageX < 5 || menu.matches(':hover')) {
+                                    // Show the menu if mouse is within 5 pixels
+                                    // from the left or we are hovering over it
+                                    clearTimeout(menuTimeout);
+                                    menuTimeout = null;
+                                    document.body.classList.remove('sb-sidenav-toggled');
+                                } else if (menuTimeout === null) {
+                                    menuTimeout = setTimeout(function () {
+                                        document.body.classList.add('sb-sidenav-toggled');
+                                    }, 100);
+                                }
+                            }
+
+                        })();
+                    </script>
+                    <div class="nav">
+                        <a class="nav-link {{'active' if request.path == '/'}}" href="/">
+                            <div class="sb-nav-link-icon"><i class="fa-solid fa-house fa-fw"></i></div>
+                            Home
+                        </a>
+                        {% if isAdminRole %}
+                            <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#collapseAdmin"
+                                aria-expanded="false" aria-controls="collapseLayouts">
+                                <div class="sb-nav-link-icon"><i class="fa-solid fa-gears fa-fw"></i></div>
+                                Administration
+                                <div class="sb-sidenav-collapse-arrow"><i class="fa-solid fa-angle-down"></i></div>
+                            </a>
+                            <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
+                                <nav class="sb-sidenav-menu-nested nav">
+                                    <a class="nav-link {{'active' if request.path == '/admin/users'}}" href="/admin/users">
+                                        <div class="sb-nav-link-icon"><i class="fa-solid fa-user-group fa-fw"></i></div>
+                                        User Management
+                                    </a>
+                                </nav>
+                            </div>
+                            <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
+                                <nav class="sb-sidenav-menu-nested nav">
+                                    <a class="nav-link {{'active' if request.path == '/admin/backup'}}" href="/admin/backup">
+                                        <div class="sb-nav-link-icon"><i class="fa-solid fa-file-zipper fa-fw"></i></div>
+                                        Export / Import
+                                    </a>
+                                </nav>
+                            </div>
+                            <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
+                                <nav class="sb-sidenav-menu-nested nav">
+                                    <a class="nav-link {{'active' if request.path == '/admin/ckan'}}" href="/admin/ckan">
+                                        <div class="sb-nav-link-icon"><i class="fa-solid fa-network-wired fa-fw"></i></div>
+                                        CKAN Config
+                                    </a>
+                                </nav>
+                            </div>
+                            <div class="collapse {{'show' if request.path.startswith('/admin')}}" id="collapseAdmin" aria-labelledby="headingOne">
+                                <nav class="sb-sidenav-menu-nested nav">
+                                    <a class="nav-link {{'active' if request.path == '/admin/fuseki'}}" href="/admin/fuseki">
+                                        <div class="sb-nav-link-icon"><i class="fa-solid fa-database fa-fw"></i></div>
+                                        Fuseki Management
+                                    </a>
+                                </nav>
+                            </div>
+                        {% endif %}
+
+                        <hr class="sb-sidenav-menu-line">
+
+                        <div class="sb-sidenav-menu-heading">Database</div>
+                        <a class="nav-link" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLayouts"
+                            aria-expanded="false" aria-controls="collapseLayouts">
+                            <div class="sb-nav-link-icon"><i class="fa-solid fa-database fa-fw"></i></div>
+                            Datasets
+                            <div class="sb-sidenav-collapse-arrow"><i class="fa-solid fa-angle-down"></i></div>
+                        </a>
+                        <div class="collapse show" id="collapseLayouts" aria-labelledby="headingOne">
+                            <nav class="sb-sidenav-menu-nested nav">
+                                {% if tdb_ids_jena is none %}
+                                <div class="alert alert-danger me-4" role="alert">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                    <span class="m-1">Error<br>Triplestore unavailable</span>
+                                </div>
+                                {% else %}
+                                {% for _id in tdb_ids_jena %}
+                                <a class="nav-link {{'active' if _id == tdb_id }}" href="/jena/{{ _id }}">
+                                    <span class="ms-1">{{ _id }}</span>
+                                </a>
+                                {% endfor %}
+                                {% endif %}
+                                {% if not tdb_ids_jena and tdb_ids_jena is not none %}
+                                <span class="m-4">No datasets</span>
+                                {% endif %}
+                                {% if isAdminRole or isReadWriteRole %}
+                                <form action="/create_dataset" method="POST" id="create_dataset">
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" placeholder="Dataset Name"
+                                            name="create_tdb_id" required>
+                                        <button class="btn btn-primary" id="btnNavbarAdd" name="create" value="jena"
+                                            type="submit"><i class="fa-solid fa-plus"></i></button>
+                                    </div>
+                                </form>
+                                {% endif %}
+                            </nav>
+                        </div>
+
+                        <hr class="sb-sidenav-menu-line">
+
+                        <div class="sb-sidenav-menu-heading">Ontology<span class="ms-2"><i
+                                    class="fa-solid fa-arrow-up-right-from-square"></i></span></div>
+                        <a class="nav-link" target="_blank" href="/redoc">
+                            <div class="sb-nav-link-icon"><i class="fa-solid fa-book fa-fw"></i></div>
+                            API Documentation (Redoc)
+                        </a>
+                        <a class="nav-link" target="_blank" href="/docs">
+                            <div class="sb-nav-link-icon"><i class="fa-solid fa-book fa-fw"></i></div>
+                            API Documentation (Swagger)
+                        </a>
+                        <a class="nav-link" target="_blank" href="https://materialdigital.github.io/core-ontology">
+                            <div class="sb-nav-link-icon"><i class="fa-solid fa-book fa-fw"></i></div>
+                            Core Ontology Documentation
+                        </a>
+                        <a class="nav-link" target="_blank" href="https://github.com/materialdigital/">
+                            <div class="sb-nav-link-icon"><i class="fa-brands fa-github fa-fw"></i></div>
+                            Material Digital GitHub
+                        </a>
+                    </div>
+                </div>
+
+                <div class="sb-sidenav-footer pe-4">
+                    <i class="fi fi-rr-crown align-middle"></i>
+                    {% if isAdminRole %}
+                    Administrator
+                    {% elif isReadWriteRole %}
+                    Read/Write
+                    {% elif isReadOnlyRole %}
+                    Read-Only
+                    {% endif %}
+                </div>
+            </nav>
+        </div>
+        <div id="layoutSidenav_content">
+            <main>
+
+                {% block content %}
+                {% endblock %}
+
+                <!-- API Key Modal -->
+                <div class="modal fade" id="apiKeyModal" tabindex="-1" role="dialog" aria-labelledby="apiKeyModalLabel"
+                    aria-hidden="true">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="apiKeyModalLabel">API Key</h5>
+                            </div>
+                            <div class="modal-body">
+                                <div class="input-group mb-3">
+                                    <input type="text" class="form-control form-control-lg" readonly
+                                        value="{{ api_key }}" id="api_key" />
+                                    <button type="button"
+                                        class="btn btn-primary-outline copy-button border border-start-0"
+                                        data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                                        data-bs-placement="right" title="" onclick="CopyToClipboard('api_key')">
+                                        <i class="fa-regular fa-copy"></i>
+                                    </button>
+                                </div>
+                                Valid until: <span id="api_key_valid_to">{{api_key_valid_to}}</span>
+                                <hr>
+                                <div class="input-group mb-3">
+                                    <div class="input-group-text">Generate new API Key valid for</div>
+                                    <input type="number" min="1" max="90" class="form-control"
+                                        value="{{ api_key_default_valid_days }}" id="api_key_days_valid" />
+                                    <div class="input-group-text">days</div>
+                                    <button type="button" class="btn btn-primary-outline border border-start-0" title=""
+                                        id="api_key_days_valid_refresh" data-bs-custom-class="custom-tooltip"
+                                        data-bs-toggle="tooltip" data-bs-placement="right">
+                                        <i class="fas fa-sync"></i>
+                                    </button>
+                                </div>
+                                <div id="returnMessageContainer"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal"
+                                    onclick="$('#apiKeyModal').modal('toggle')">Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Password Change Modal -->
+                <div class="modal fade" id="passwordChangeModal" tabindex="-1" role="dialog" aria-labelledby="passwordChangeModalLabel"
+                    aria-hidden="true">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="passwordChangeModalLabel">Change password</h5>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label for="old_password">Current password</label>
+                                    <input type="password" class="form-control form-control-lg" id="old_password" />
+                                </div>
+                                <div class="form-group mt-2">
+                                    <label for="new_password1">New password</label>
+                                    <input type="password" class="form-control form-control-lg" id="new_password1" />
+                                </div>
+                                <div class="form-group mt-2">
+                                    <label for="new_password2">New password confirmation</label>
+                                    <input type="password" class="form-control form-control-lg" id="new_password2" />
+                                </div>
+                                <hr>
+                                <button type="button" class="btn btn-primary border border-start-0" title=""
+                                    id="password_change_submit" data-bs-custom-class="custom-tooltip"
+                                    data-bs-toggle="tooltip" data-bs-placement="right">
+                                    <i class="fas fa-save"></i> Change Password
+                                </button>
+                                <div class="mt-2" id="returnPasswordChangeMessageContainer"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal"
+                                    onclick="$('#passwordChangeModal').modal('toggle')">Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Back to top button -->
+                <button type="button" class="btn btn-secondary btn-floating btn-lg" id="btn-back-to-top">
+                    <i class="fa-solid fa-arrow-up"></i>
+                </button>
+            </main>
+
+        </div>
+    </div>
+
+
+    <!--Prevent browser auto scroll on refresh (F5)-->
+    <script> history.scrollRestoration = "manual"</script>
+
+
+    {% block script %}
+    {% endblock %}
+
+
+</body>
+
+</html>

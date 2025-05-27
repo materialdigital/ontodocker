@@ -1,0 +1,696 @@
+{% extends "base.html" %}
+
+{% block style %}
+<!-- yasgui Style note: yasgui styles will affect the Style of DataTables styles, vice versa! So I modify it and serve locally-->
+<!--    <link href="https://unpkg.com/@triply/yasgui/build/yasgui.min.css" rel="stylesheet" type="text/css" />-->
+<link href="../static/css/yasgui/yasgui.min.css" rel="stylesheet" />
+
+<style>
+    .fi-br-triangle:before {
+        content: "\f961";
+        top: 2px !important;
+        position: relative !important;
+    }
+
+    .treejs {
+        font-size: 20px !important;
+    }
+
+    .treejs .treejs-node__checked>.treejs-checkbox:before,
+    .treejs .treejs-node__halfchecked>.treejs-checkbox:before {
+        background-color: #509ee3 !important;
+        border-color: #509ee3 !important;
+    }
+</style>
+
+{% endblock %}
+
+{% block content %}
+<script>
+    $(document).ready(function () {
+        $('#ckan_setting').click(function () {
+            $('#ckan-publish-modal-dialog').modal('show');
+        });
+
+        const tag_template = '<div class="col-2 mt-2 tag-container"><div class="input-group"><input class="form-control ckan-tag" type="text" placeholder="Tag" /><div class="input-group-append"><button type="button" class="btn btn-danger remove-tag">-</button></div></div></div>';
+        $("#add-tag").click(function (e) {
+            e.preventDefault();
+            $('#ckan-dataset-tags').append(tag_template);
+        });
+        $(document).on("click", ".remove-tag", function (e) {
+            e.preventDefault();
+            $(this).closest(".tag-container").remove();
+        });
+
+        $("#ckan-publish").click(function () {
+            const tags = [];
+            $('.ckan-tag').each(function () {
+                tags.push($(this).val());
+            });
+            const data = {
+                dataset_name: $("#ckan-dataset-name").val(),
+                dataset_description: $("#ckan-dataset-description").val(),
+                dataset_tags: tags,
+                ckan_publisher_name: $("#ckan-dataset-author").val(),
+                ckan_publisher_email: $("#ckan-dataset-author-email").val()
+            };
+            axios.post('{{ ownurl }}/jena/{{ tdb_id }}/ckan', data)
+                .then(function (response) {
+                    showToastMessage('success', response.data);
+                    $('#ckan-publish-modal-dialog').modal('hide');
+                    reloadCkan();
+                })
+                .catch(function (error) {
+                    showToastMessage('danger', error.response.data);
+                });
+        });
+
+        $("#ckan-remove").click(function (e) {
+            e.preventDefault();
+            axios.delete('{{ ownurl }}/jena/{{ tdb_id }}/ckan')
+                .then(function (response) {
+                    showToastMessage('success', response.data);
+                    $('#ckan-publish-modal-dialog').modal('hide');
+                    reloadCkan();
+                })
+                .catch(function (error) {
+                    showToastMessage('danger', error.response.data);
+                });
+        });
+
+        reloadCkan();
+    });
+
+    function reloadCkan() {
+        axios.get('{{ ownurl }}/jena/{{ tdb_id }}/ckan')
+            .then(function (response) {
+                $('#ckanPublishText').text('CKAN edit/remove');
+                $("#ckan-dataset-name").val(response.data.name);
+                $("#ckan-dataset-description").val(response.data.notes);
+                $("#ckan-author").val(response.data.author);
+                $("#ckan-author-email").val(response.data.author_email);
+                $("#ckan-remove-container").show();
+                $('#ckan-dataset-tags').empty();
+                response.data.tags.forEach(function (tag) {
+                    $('#ckan-dataset-tags').append(`<div class="col-2 mt-2 tag-container"><div class="input-group"><input class="form-control ckan-tag"  value="${tag.name}" type="text" placeholder="Tag" /><div class="input-group-append"><button type="button" class="btn btn-danger remove-tag">-</button></div></div></div>`);
+                });
+            })
+            .catch(function (error) {
+                if (error.response.status === 404) {
+                    $('#ckanPublishText').text('CKAN publish');
+                    $("#ckan-dataset-name").val("{{ tdb_id }}");
+                    $("#ckan-dataset-description").val("This dataset only publishes a _SPARQL_ endpoint where the data can be queried.");
+                    $("#ckan-author").val("{{ name }}");
+                    $("#ckan-author-email").val("");
+                    $("#ckan-remove-container").hide();
+                    $('#ckan-dataset-tags').empty();
+                }
+                // if other than 404 print error
+                if (error.response.status !== 404) {
+                    showToastMessage('error', error.response.data);
+                }
+                // if 424 then CKAN is not configured, so hide ckan publish button
+                if (error.response.status === 424) {
+                    $('#ckan_setting').hide();
+                }
+            });
+    }
+</script>
+<div aria-live="polite" aria-atomic="true" style="z-index:9999;">
+    <!-- Position it -->
+    <div id="toastContainer" style="position: absolute; top: 0; right: 0;z-index:9999;">
+    </div>
+</div>
+<div class="modal modal-xl fade" tabindex="-1" role="dialog" id="ckan-publish-modal-dialog" data-bs-keyboard="false"
+    data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">CKAN Publish</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                {% if user_identifier and (isReadWriteRole or isAdminRole) %}
+                <div class="row">
+                    <div class="col-12">
+                        Publish the dataset with its corresponding API-SPARQL and UI-URL to the configured CKAN.
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <!-- CKAN dataset name -->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-name" class="form-labelfw-bold">Dataset Name</label>
+                            <input class="form-control" type="text" id="ckan-dataset-name" value="{{ tdb_id }}"
+                                required />
+                        </div>
+                        <!-- CKAN dataset description-->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-description" class="form-labelfw-bold">Dataset Description</label>
+                            <textarea class="form-control" id="ckan-dataset-description" rows="10"
+                                required>This dataset only publishes a _SPARQL_ endpoint where the data can be queried.</textarea>
+                        </div>
+                        <!-- CKAN Author name -->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-author" class="form-label fw-bold">Author / Publisher Name</label>
+                            <input class="form-control" type="text" id="ckan-dataset-author" value="{{ name }}"/>
+                        </div>
+                        <!-- CKAN Author Email -->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-author-email" class="form-label fw-bold">Author / Publisher Email</label>
+                            <input class="form-control" type="email" id="ckan-dataset-author-email" />
+                        </div>
+                        <!-- Add list of tags dynamically with a plus button, tags are key value pairs, so two input tags per row-->
+                        <div class="mb-3">
+                            <label for="ckan-dataset-tags" class="form-label fw-bold">Tags</label>
+                            <button type="button" class="btn btn-primary btn-sm ms-1" id="add-tag">+</button>
+                            <div class="row" id="ckan-dataset-tags"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <button type="button" class="btn btn-primary" id="ckan-publish">
+                            <i class="fa-solid fa-upload"></i>
+                            <span class="ms-1">Link to CKAN</span>
+                        </button>
+                    </div>
+                    <div class="col-auto" id="ckan-remove-container" style="display:none;">
+                        <button type="button" class="btn btn-danger" id="ckan-remove">
+                            <i class="fa-solid fa-trash"></i>
+                            <span class="ms-1">Unlink from CKAN</span>
+                        </button>
+                    </div>
+                </div>
+                {% else %}
+                <div class="row">
+                    <div class="col-12">
+                        <p>CKAN publish is only available for authenticated users with write permission.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid px-4">
+
+    {% if not tdb_id %}
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+    <script>
+        showToastMessage('{{ message.category }}', '{{ message.message|safe }}') // use |safe in case of newline \n in string
+    </script>
+    {% endfor %}
+    {% else %}
+    <div>
+        <div class="row align-items-center">
+            <div class="col">
+                <h4 class="mt-3 mb-3">
+                    <span id="tdb_id">{{ tdb_id }}</span>
+                </h4>
+            </div>
+            {% if isAdminRole or isReadWriteRole %}
+            <div class="col-auto">
+                <label class="btn btn-outline-primary" for="ckan_setting" data-bs-custom-class="custom-tooltip"
+                    data-bs-toggle="tooltip" data-bs-placement="bottom" title="Edit CKAN publish state">
+                    <input id="ckan_setting" type="button" style="display:none">
+                    <i class="fa-solid fa-upload"></i>
+                    <span class="ms-1" id="ckanPublishText">CKAN publish</span>
+                </label>
+            </div>
+            {% endif %}
+            <div class="col-auto">
+                <label class="btn btn-outline-primary" for="download-trig-file" data-bs-custom-class="custom-tooltip"
+                    data-bs-toggle="tooltip" data-bs-placement="bottom" title="Download as Trig File">
+                    <input id="download-trig-file" data-url="{{ownurl}}/jena/{{tdb_id}}/download" type="button"
+                        style="display:none">
+                    <i class="fa-solid fa-download"></i>
+                    <span class="ms-1">Download dataset as Trig</span>
+                </label>
+            </div>
+            {% if isAdminRole or isReadWriteRole %}
+            <div class="col-auto">
+                <form action="/jena/{{ tdb_id }}/clear_cache" method="GET" id="clear_dataset_cache"
+                    style="display: inline-block;">
+                    <input type="hidden" name="tdb_id" value='{{ tdb_id }}'>
+                    <button type="submit" name="destroy" class="btn btn-outline-secondary">
+                        Clear cache
+                    </button>
+                </form>
+            </div>
+            <div class="col-auto">
+                <!--                    <form class=btn-group method="POST">-->
+                <form action="/destroy_dataset" method="POST" id="destroy_dataset" style="display: inline-block;">
+                    <input type="hidden" name="tdb_id" value='{{ tdb_id }}'>
+                    <button type="submit" name="destroy" class="btn btn-danger"
+                        onclick="return confirm('Are you sure you want to remove this dataset?\n\nThis action cannot be reversed.')">
+                        Remove this dataset
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+    <script>
+        showToastMessage('{{ message.category }}', '{{ message.message|safe }}') // use |safe in case of newline \n in string
+    </script>
+    {% endfor %}
+</div>
+
+
+{% if tdb_id %}
+<!-- API Endpoints -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-server me-1"></i>
+            API Endpoints
+        </div>
+        <div class="card-body">
+            <div class="row g-2 align-items-center column-gap-4">
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <input type="text" class="form-control" readonly
+                                value="{{ ownurl }}/api/v1/jena/{{ tdb_id }}/sparql" id="query_endpoint_link">
+                            <label for="query_endpoint_link">SPARQL Endpoint</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="" onclick="CopyToClipboard('query_endpoint_link')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <input type="text" class="form-control" readonly
+                                value="{{ ownurl }}/api/v1/jena/{{ tdb_id }}" id="data_endpoint_link">
+                            <label for="data_endpoint_link">Data Endpoint</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="" onclick="CopyToClipboard('data_endpoint_link')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        axios.get("{{ ownurl }}/jena/{{ tdb_id }}/reasoner")
+            .then(function (response) {
+                $("#reasoner").val(response.data);
+                onChangeReasoner();
+            })
+            .catch(function (error) {
+                showToastMessage('danger', error.response.data);
+            });
+        $("#reasoner").change(onChangeReasoner);
+        $("#set_reasoner").click(function () {
+            // Ask if you rally want to set the reasoner
+            if (confirm("!! WARNING !!\n\nSetting a reasoner will cause a Fuseki-Jena restart and all active queries (also of other datasets/users) will be canceled.\n\nIt will take a few seconds until the fuseki is available again.\n\nDo you really want to set the reasoner?")) {
+                axios.post('{{ ownurl }}/jena/{{ tdb_id }}/reasoner', {
+                    reasoner: $("#reasoner").val()
+                })
+                    .then(function (response) {
+                        showToastMessage('success', response.data);
+                    })
+                    .catch(function (error) {
+                        showToastMessage('danger', error.response.data);
+                    });
+            }
+        });
+    });
+
+    function onChangeReasoner() {
+        var reasoner = $("#reasoner").val();
+        var helptext = "";
+        switch (reasoner) {
+            case "TransitiveReasoner":
+                helptext = "A simple “reasoner” used to help with API development.<br/><br/>This reasoner caches a transitive closure of the subClass and subProperty graphs. The generated infGraph allows both the direct and closed versions of these properties to be retrieved. The cache is built when the tbox is bound in but if the final data graph contains additional subProperty/subClass declarations then the cache has to be rebuilt.<br/><br/>The triples in the tbox (if present) will also be included in any query. Any of tbox or data graph are allowed to be null.";
+                break;
+            case "RDFSExptRuleReasoner":
+                helptext = "A full implementation of RDFS reasoning using a hybrid rule system, together with optimized subclass/subproperty closure using the transitive graph caches. Implements the container membership property rules using an optional data scanning hook. Implements datatype range validation.";
+                break;
+            case "OWLFBRuleReasoner":
+                helptext = "A hybrid forward/backward implementation of the OWL closure rules. <br/><b>!! This reasoner can be very slow up to unusable querying if the dataset is large! Only use it, if you are aware of this and only use it on small datasets !!</b>";
+                break;
+            case "OWLMiniFBRuleReasoner":
+                helptext = "Key limitations over the normal OWL configuration are:<br/><ul><li>omits the someValuesFrom => bNode entailments</li><li>avoids any guard clauses which would break the find() contract</li><li>omits inheritance of range implications for XSD datatype ranges</li></ul><b>!! This reasoner can be very slow up to unusable querying if the datasets are large! Only use it, if you are aware of this and only use it on small datasets !!</b>";
+                break;
+            case "OWLMicroFBRuleReasoner":
+                helptext = "This only supports:<br/><ul><li>RDFS entailments</li><li>basic OWL axioms like ObjectProperty subClassOf Property</li><li>intersectionOf, equivalentClass and forward implication of unionOf sufficient for traversal of explicit class hierarchies</li><li>Property axioms (inverseOf, SymmetricProperty, TransitiveProperty, equivalentProperty)</li></ul>";
+                break;
+        }
+        $("#reasoner_helptext").html(helptext);
+    }
+</script>
+<!-- Configuration -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-cog me-1"></i>
+            Configuration
+        </div>
+        <div class="card-body">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-bs-toggle="tab" href="#reasoner_tab">Reasoner</a>
+                </li>
+            </ul>
+            <div class="tab-content" id="nav-tabContent">
+                <div class="tab-pane fade show active" id="reasoner_tab">
+                    <div class="mt-1">
+                        Here you can change the reasoner to your dataset. Applying a new reasoner requires a restart of
+                        the
+                        Fuseki server. All active queries will be canceled, also of other datasets/users.
+                        <br />
+                        Reasoner are only applied to the default graph.
+                    </div>
+                    <!-- Select Reasoner -->
+                    <div class="row g-2 align-items-center mt-1">
+                        <div class="input-group">
+                            <div class="form-floating">
+                                <select class="form-select" id="reasoner" name="reasoner">
+                                    <option value="">No Reasoner</option>
+                                    <option value="TransitiveReasoner">Transitive Reasoner (very fast)</option>
+                                    <option value="RDFSExptRuleReasoner">RDFS Rule Reasoner (fast)</option>
+                                    <option value="OWLMicroFBRuleReasoner">Micro OWL Reasoner (fast)</option>
+                                    <option value="OWLMiniFBRuleReasoner">Mini OWL Reasoner (slow)</option>
+                                    <option value="OWLFBRuleReasoner">Full OWL Reasoner (very slow)</option>
+                                </select>
+                                <label for="reasoner">Reasoner</label>
+                            </div>
+                        </div>
+                        <small>
+                            <div id="reasoner_helptext"></div>
+                        </small>
+                        <button type="button" class="btn btn-primary" id="set_reasoner"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="Set Reasoner">
+                            <i class="fa-solid fa-check"></i>
+                            <span class="ms-1">Set Reasoner</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Named Graph Datatable with Columns IRI, Label and Create Query Button which adds a query tab to the YasGUI
+where the columns IRI and Label are searchable 
+-->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-table me-1"></i>
+            Named Graphs
+        </div>
+        <div class="card-body">
+            <table id="named_graphs" class="table order-column table-bordered table-hover nowrap">
+                <thead>
+                    <tr>
+                        <th>IRI</th>
+                        <th style="width:40px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for graph in named_graphs %}
+                    <tr>
+                        <td>{{ graph.iri }}</td>
+                        <td style="width:40px">
+                            <button type="button" class="btn btn-primary-outline" data-bs-custom-class="custom-tooltip"
+                                data-bs-toggle="tooltip" data-bs-placement="top" title="Create query"
+                                onclick="createQueryOfNamedGraph('{{ graph.iri }}')">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Query Field -->
+<div class="container-fluid px-4 mb-4">
+    <div class="card mb-4">
+        <div class="card-header pt-2">
+            <div class="row g-3 justify-content-between align-items-center">
+                <div class="col-6 col-md">
+                    <ul class="nav nav-tabs card-header-tabs" data-bs-tabs="tabs">
+                        <!--Yasgui Code Editor Tab-->
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#sparql_code_view">
+                                <i class="fa-solid fa-code" aria-hidden="true"></i>
+                                <span class="ms-1">Code Editor</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="col col-md-auto">
+                    <div id="savedQueryMsgContainer" style="float:left"></div>
+                    <div class="row pe-3" id="saveQueryContainer" style="float:left; display:none;">
+                        <div class="col float-end">
+                            <span style="float:left" class="mt-2 me-3">Query Name:</span>
+                            <input type="text" id="queryName" style="width:300px; float:left;" class="mt-1">
+                            <div class="form-check form-switch ms-2 mt-2" style="float:left;">
+                                <label class="form-check-label" for="publicToggle">Public</label>
+                                <input class="form-check-input" type="checkbox" id="publicToggle">
+                            </div>
+                            <button type="button" id="saveQueryConfirmBtn" class="btn btn-primary-outline"
+                                style="float:left;" data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                                data-bs-placement="bottom" title="Save query">
+                                <i class="fa-solid fa-floppy-disk"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary-outline action-button" style="" id="load_query_btn"
+                        data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        title="Load query">
+                        <i class="fa-regular fa-folder"></i>
+                    </button>
+                    <select id="query_select" class="action-loading-elem" style="width:300px; display:none;">
+                    </select>
+                    <button type="button" id="loadSelectedQueryBtn" class="btn btn-primary-outline action-loading-elem"
+                        style="display:none; " data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                        data-bs-placement="bottom" title="Load selected query">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                    <button type="button" id="deleteQueryBtn" class="btn btn-primary-outline action-loading-elem"
+                        style="display:none; " data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                        data-bs-placement="bottom" title="Delete selected query">
+                        <i class="fa-solid fa-trash text-danger"></i>
+                    </button>
+                    {% if (isAdminRole or isReadWriteRole) and user_identifier %}
+                    <button type="button" class="btn btn-primary-outline action-button action-save-copy-button"
+                        id="save_query_btn" data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip"
+                        data-bs-placement="bottom" title="Save the query">
+                        <i class="fa-regular fa-floppy-disk"></i>
+                    </button>
+                    {% endif %}
+                    <button type="button"
+                        class="btn btn-primary-outline action-button action-save-copy-button copy-button py-0"
+                        id="copy_code" title="Copy to clipboard" data-bs-custom-class="custom-tooltip"
+                        data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        onclick="navigator.clipboard.writeText(yasgui.getTab().yasqe.getValue());"><!--color: #6c757d;-->
+                        <!--HTTPS only-->
+                        <i class="fa-regular fa-copy fa-fw"></i>
+                    </button>
+                    <button type="button" id="cancelBtn" class="btn btn-primary-outline" style="display:none; "
+                        data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        title="Cancel">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+        <!-- content -->
+        <div class="card-body tab-content">
+            <!-- Tab (SPARQL Code View2)-->
+            <div class="tab-pane show active mb-4" id="sparql_code_view">
+                <div class="row">
+                    <form method="POST" id="qform" enctype="application/x-www-form-urlencoded">
+                        <div id="yasgui"></div>
+                    </form>
+                </div>
+                <div class="col float-end" style="color: #4f525c;">
+                    <a class="" target="_blank" href="https://www.w3.org/TR/sparql11-overview/">
+                        <span>W3C SPARQL Overview</span>
+                    </a>
+                    <span class="ms-1"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" form="qform" name="query" value="query" class="btn btn-primary"
+                    data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                    title="Run the query/code">
+                    <i class="fa-solid fa-play"></i>
+                    <span class="ms-1">Run</span>
+                </button>
+                {% if isAdminRole or isReadWriteRole %}
+                <button type="submit" form="qform" name="update" id="updateButton" class="btn btn-outline-secondary"
+                    data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                    title="Update partial data">
+                    <i class="fa-solid fa-play"></i>
+                    <span class="ms-1">Insert / Update</span>
+                    <i class="fa-solid fa-arrow-up"></i>
+                </button>
+                {% endif %}
+            </div>
+            {% if isAdminRole or isReadWriteRole %}
+            <div class="float-end">
+                <div class="float-end">
+                    <form class=btn-group method="POST" enctype="multipart/form-data">
+                        <label class="btn btn-outline-secondary" for="file-selector-trig"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                            title="Upload Trig Files (.trig)">
+                            <input id="file-selector-trig" type="file" accept=".trig" style="display:none" name="file">
+                            <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                            <span class="ms-1">Upload Trig</span>
+                        </label>
+                    </form>
+                </div>
+                <br /><br />
+                <form class=btn-group method="POST" enctype="multipart/form-data">
+                    <label class="btn btn-outline-secondary" for="file-selector-rdf-ttl"
+                        data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                        title="Upload Turtle (.ttl) or RDF (.rdf) files">
+                        <input id="named-graph-upload" class="me-3" style="width:350px" type="input"
+                            name="named-graph-upload" placeholder="Graph Name (empty = default)" list="graph-list">
+                        <datalist id="graph-list">
+                            {% for graph in named_graphs %}
+                            <option value="{{ graph.iri }}"></option>
+                            {% endfor %}
+                        </datalist>
+                        <input id="file-selector-rdf-ttl" type="file" accept=".ttl,.rdf" style="display:none"
+                            name="file">
+                        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                        <span class="ms-1">Upload RDF/TTL</span>
+                    </label>
+                </form>
+            </div>
+            {% endif %}
+            <div class="row g-2 align-items-center">
+                <div class="mt-4" id="flash-message-axios" style="font-size: 1.15rem"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid px-4 mb-4 d-none" id="table-container">
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fa-solid fa-table me-1"></i>
+            Result Table
+        </div>
+        <div class="card-body">
+            <!-- If present then the raw data is displayed in a textarea and can be copy pasted with a button-->
+            <div class="row g-2 align-items-center" id="raw_data_container">
+                <div class="col-md">
+                    <div class="input-group mb-3">
+                        <div class="form-floating">
+                            <textarea class="form-control" id="raw_data" style="height:100px;" readonly></textarea>
+                            <label for="raw_data">Raw Data</label>
+                        </div>
+                        <button type="button" class="btn btn-primary-outline copy-button border border-start-0"
+                            data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="" onclick="CopyToClipboard('raw_data')">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <table id="table_query" class="table order-column table-bordered table-hover nowrap">
+            </table>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- WebVOWL -->
+<div class="container-fluid px-4 mb-4 {% if ds_isempty %}d-none{% endif %}" id="webvowl_available_container">
+    <div class="card mb-4">
+        <div class="card-body">
+            <button type="button" class="btn btn-outline-secondary" id="webvowl_show_button" data-tdb-id="{{ tdb_id }}"
+                data-bs-custom-class="custom-tooltip" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                title="Visualize the dataset">
+                <i class="fa-solid fa-eye"></i>
+                <span class="ms-1">Visualize with WebVOWL</span>
+            </button>
+        </div>
+    </div>
+</div>
+<div class="container-fluid px-4 mb-4 d-none" id="webvowl_container">
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-2 align-items-center column-gap-4">
+                <div class="input-group mb-3">
+                    <div class="form-floating">
+                        <iframe style="height:700px;width:100%;" id="webvowl_iframe"
+                            data-src="{{ ownurl }}/static/vowl/index.html?tdb_id={{ tdb_id }}"
+                            frameborder="0"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid px-4 mb-4 {% if not ds_isempty %}d-none{% endif %}" id="dataset_empty_hint">
+    <div class="card mb-4">
+        <div class="card-body">
+            Dataset is empty
+        </div>
+    </div>
+</div>
+
+
+
+{% endif %}
+
+{% endblock %}
+
+{% block script %}
+
+<script src="../static/js/yasgui.4.2.28.min.js"></script>
+
+<script>
+    // see https://triply.cc/docs/yasgui-api/
+    Yasgui.Yasr.plugins.table = null; // disable the table of Yasgui, and use custom designed datatables instead
+    Yasgui.Yasr.plugins.response = null; // disable the response of Yasgui
+
+    let yasgui_view = document.getElementById("yasgui");
+    let yasgui;
+
+    if (yasgui_view) {
+        yasgui = new Yasgui(yasgui_view, {
+            requestConfig: { endpoint: "http://example.com/sparql" },
+            // Allow resizing of the Yasqe editor
+            // resizeable: false, // no effect
+            copyEndpointOnNewTab: false,
+            persistencyExpire: 0, // default: 30 days // set to 0 to always load the default query on page load
+        });
+
+    }
+
+</script>
+{% endblock %}

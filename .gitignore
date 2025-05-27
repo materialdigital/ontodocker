@@ -1,0 +1,7 @@
+/data/user/user.db
+/data/fuseki/databases/*
+/data/fuseki/configuration/*
+/fastapi_app/app/triplestore/var/data.json
+docker-compose.yml
+.env
+

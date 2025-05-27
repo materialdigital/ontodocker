@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    
+    <div class="row align-items-center">
+        <div class="col">
+            <h4 class="mt-3 mb-1">
+                Login
+            </h4>
+        </div>
+    </div>
+    <hr>
+    <div id="returnLoginMsgContainer"></div>
+    <div class="row">
+        <div class="col-md-3">
+            <form id="loginForm" method="post" action="{{ ownurl }}/login">
+                <div class="mb-3">
+                    <label for="user_identifier" class="form-label">Benutzername</label>
+                    <input type="text" class="form-control" id="user_identifier" name="user_identifier" required>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Passwort</label>
+                    <input type="password" class="form-control" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+        </div>
+    </div>
+    <hr>
+    {% if available_providers %}
+    <!-- Oder Login mit SSO Provider -->
+    <div class="row text-center">
+        <div class="col-md-12">
+            <h6>or Login with</h6>
+        </div>
+        <div class="col-md-12">
+            {% for available_provider in available_providers %}
+            <div class="row mt-3">
+                <div class="col-md-12">
+                    <a href="/login/{{ available_provider.id }}" class="btn btn-outline-primary">{{ available_provider.name }}</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    <!-- Toast messages sent from FastAPI backend-->
+    {% for message in get_flashed_messages(request) %}
+    <script>
+        showFlashMessage('{{ message.category }}', '{{ message.message|safe }}', "html", $("#returnLoginMsgContainer"));
+    </script>
+    {% endfor %}
+</div>
+
+{% endblock %}
